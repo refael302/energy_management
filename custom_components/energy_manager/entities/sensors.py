@@ -15,10 +15,11 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ..const import DOMAIN
+from ..const import DOMAIN, NAME
 from ..coordinator import EnergyManagerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,15 +60,23 @@ class EnergyManagerSensorBase(CoordinatorEntity[EnergyManagerCoordinator], Senso
         device_class: str | None = None,
         state_class: str | None = None,
         unit: str | None = None,
+        entity_category: EntityCategory | None = None,
     ) -> None:
         super().__init__(coordinator)
+        self._entry = entry
         self._key = key
         self._attr_name = name
         self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title or NAME,
+            manufacturer=NAME,
+        )
         self._attr_icon = icon
         self._attr_device_class = device_class
         self._attr_state_class = state_class
         self._attr_native_unit_of_measurement = unit
+        self._attr_entity_category = entity_category
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -207,6 +216,7 @@ class EnergyManagerStrategyReasonSensor(EnergyManagerSensorBase):
             "strategy_reason",
             "Strategy Reason",
             icon="mdi:text-box",
+            entity_category=EntityCategory.DIAGNOSTIC,
         )
 
     @callback
@@ -227,6 +237,7 @@ class EnergyManagerRecommendedToTurnOffSensor(EnergyManagerSensorBase):
             "recommended_to_turn_off",
             "Recommended to turn off",
             icon="mdi:lightbulb-off-outline",
+            entity_category=EntityCategory.DIAGNOSTIC,
         )
 
     @callback
