@@ -5,7 +5,7 @@ Data coordinator – polls sensors and forecast every 30s, runs decision engine 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -83,7 +83,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=UPDATE_INTERVAL,
+            update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )
         self.model = EnergyModel(
             battery_capacity_kwh=float(data.get(CONF_BATTERY_CAPACITY, 20)),
