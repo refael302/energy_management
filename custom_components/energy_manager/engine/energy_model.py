@@ -56,7 +56,6 @@ class EnergyModel:
         self._battery_status()
         self._charge_discharge_states()
         self._consumption_and_headroom()
-        self._daily_margin()
         self._can_turn_on_heavy_consumer()
         self._can_waste_energy()
 
