@@ -46,14 +46,14 @@
         }
       },
       "strings": {
-        "title": "PV strings (panels) – installation angle, capacity",
-        "description": "Configure 2 PV strings for solar forecast. For each string: installed capacity (kW), installation angle – tilt (°), azimuth (°).",
+        "title": "PV strings (panels) – installation angle, capacity, number of strings",
+        "description": "Configure 2 PV strings for solar forecast. For each string: installed capacity (kW), installation angle – tilt (°), azimuth (°). Order matters for calculation.",
         "data": {
-          "string_0_system_size_kw": "String 1 – capacity (kW)",
-          "string_0_tilt": "String 1 – tilt (°)",
+          "string_0_system_size_kw": "String 1 – installed capacity (kW)",
+          "string_0_tilt": "String 1 – installation angle / tilt (°)",
           "string_0_azimuth": "String 1 – azimuth (°)",
-          "string_1_system_size_kw": "String 2 – capacity (kW)",
-          "string_1_tilt": "String 2 – tilt (°)",
+          "string_1_system_size_kw": "String 2 – installed capacity (kW)",
+          "string_1_tilt": "String 2 – installation angle / tilt (°)",
           "string_1_azimuth": "String 2 – azimuth (°)"
         },
         "data_description": {
@@ -63,49 +63,6 @@
           "string_1_system_size_kw": "Installed capacity of second string in kW. Example: 5",
           "string_1_tilt": "Panel tilt from horizontal in degrees (0–90). Example: 30",
           "string_1_azimuth": "Panel azimuth in degrees. Example: 0"
-        }
-      },
-      "init": {
-        "title": "Options",
-        "data": {
-          "string_0_system_size_kw": "String 1 – capacity (kW)",
-          "string_0_tilt": "String 1 – tilt (°)",
-          "string_0_azimuth": "String 1 – azimuth (°)",
-          "string_1_system_size_kw": "String 2 – capacity (kW)",
-          "string_1_tilt": "String 2 – tilt (°)",
-          "string_1_azimuth": "String 2 – azimuth (°)"
-        },
-        "data_description": {
-          "string_0_system_size_kw": "Capacity in kW. Example: 5",
-          "string_0_tilt": "Tilt in degrees (0–90). Example: 30",
-          "string_0_azimuth": "Azimuth: 0=South, -90=East, 90=West. Example: 0",
-          "string_1_system_size_kw": "Capacity in kW. Example: 5",
-          "string_1_tilt": "Tilt in degrees. Example: 30",
-          "string_1_azimuth": "Azimuth in degrees. Example: 0"
-        }
-      }
-    },
-    "options": {
-      "step": {
-        "init": {
-          "title": "Edit PV strings",
-          "description": "Change panel string parameters. Other settings (sensors, capacity, location, etc.) can be changed by removing and re-adding the integration.",
-          "data": {
-            "string_0_system_size_kw": "String 1 – capacity (kW)",
-            "string_0_tilt": "String 1 – tilt (°)",
-            "string_0_azimuth": "String 1 – azimuth (°)",
-            "string_1_system_size_kw": "String 2 – capacity (kW)",
-            "string_1_tilt": "String 2 – tilt (°)",
-            "string_1_azimuth": "String 2 – azimuth (°)"
-          },
-          "data_description": {
-            "string_0_system_size_kw": "Capacity in kW. Example: 5",
-            "string_0_tilt": "Tilt in degrees (0–90). Example: 30",
-            "string_0_azimuth": "Azimuth: 0=South, -90=East, 90=West. Example: 0",
-            "string_1_system_size_kw": "Capacity in kW. Example: 5",
-            "string_1_tilt": "Tilt in degrees. Example: 30",
-            "string_1_azimuth": "Azimuth in degrees. Example: 0"
-          }
         }
       }
     }
