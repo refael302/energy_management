@@ -170,7 +170,10 @@ class ForecastEngine:
         def _parse_time(ts: str) -> datetime:
             if ts.endswith("Z"):
                 ts = ts[:-1] + "+00:00"
-            return datetime.fromisoformat(ts)
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
 
         times = [_parse_time(ts) for ts in times_str]
         # Ensure same length
