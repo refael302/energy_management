@@ -74,8 +74,7 @@ DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_SOLAR_PRODUCTION_SENSOR): _power_sensor_selector(),
         vol.Required(CONF_HOUSE_CONSUMPTION_SENSOR): _power_sensor_selector(),
         vol.Required(CONF_CONSUMER_SWITCHES): selector.EntitySelector(
-            selector.EntityFilterSelectorConfig(domain="switch"),
-            multiple=True,
+            selector.EntityFilterSelectorConfig(domain="switch", multiple=True),
         ),
         vol.Required(CONF_LATITUDE, default=32.08): vol.Coerce(float),
         vol.Required(CONF_LONGITUDE, default=34.78): vol.Coerce(float),
@@ -92,8 +91,7 @@ DATA_SCHEMA = vol.Schema(
         ): vol.Coerce(int),
         vol.Optional(CONF_BATTERY_CURRENT_SENSOR): _sensor_selector(),
         vol.Optional(CONF_LIGHTS_TO_TURN_OFF): selector.EntitySelector(
-            selector.EntityFilterSelectorConfig(domain="light"),
-            multiple=True,
+            selector.EntityFilterSelectorConfig(domain="light", multiple=True),
         ),
     }
 )
