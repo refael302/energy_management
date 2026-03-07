@@ -37,7 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         dev_reg.async_update_device(
             device.id,
-            identifiers=our_identifiers,
+            new_identifiers=our_identifiers,
             name=entry.title or NAME,
             manufacturer=NAME,
         )
