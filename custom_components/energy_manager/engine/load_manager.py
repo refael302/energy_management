@@ -17,6 +17,9 @@ from ..const import SYSTEM_MODE_SAVING, SYSTEM_MODE_WASTING
 
 _LOGGER = logging.getLogger(__name__)
 
+# Entities that can be used as consumers (turn_on/turn_off).
+CONSUMER_DOMAINS = ("switch", "input_boolean")
+
 
 @dataclass
 class LoadManagerState:
@@ -48,9 +51,13 @@ class LoadManager:
         self.state = LoadManagerState()
         self._last_turn_on_time: datetime | None = None
 
-    def _switch_domain_entity_ids(self, entity_ids: list[str]) -> list[str]:
-        """Return only switch entities that exist."""
-        return [eid for eid in entity_ids if eid.startswith("switch.")]
+    def _consumer_entity_ids(self, entity_ids: list[str]) -> list[str]:
+        """Return only switch/input_boolean entities (consumers we can turn on/off)."""
+        return [
+            eid
+            for eid in entity_ids
+            if eid.split(".", 1)[0] in CONSUMER_DOMAINS
+        ]
 
     async def apply_mode(
         self,
@@ -62,7 +69,7 @@ class LoadManager:
         Apply actions for the given system mode.
         super_saving: when True (very low battery), also turn off lights.
         """
-        consumers = self._switch_domain_entity_ids(self.consumer_entity_ids)
+        consumers = self._consumer_entity_ids(self.consumer_entity_ids)
         if system_mode == SYSTEM_MODE_WASTING:
             await self._apply_wasting_once(consumers, can_turn_on_heavy_consumer)
         elif system_mode == SYSTEM_MODE_SAVING:
@@ -70,33 +77,41 @@ class LoadManager:
         else:
             await self._apply_off(consumers)
 
+    def _domain(self, entity_id: str) -> str | None:
+        """Return entity domain if it is a supported consumer, else None."""
+        d = entity_id.split(".", 1)[0] if "." in entity_id else ""
+        return d if d in CONSUMER_DOMAINS else None
+
+    async def _call_turn_off(self, entity_ids: list[str]) -> None:
+        """Call turn_off for each entity using its domain (switch or input_boolean)."""
+        by_domain: dict[str, list[str]] = {}
+        for eid in entity_ids:
+            domain = self._domain(eid)
+            if domain:
+                by_domain.setdefault(domain, []).append(eid)
+        for domain, eids in by_domain.items():
+            await self.hass.services.async_call(
+                domain, "turn_off", {"entity_id": eids}, blocking=True
+            )
+
     async def _apply_off(self, consumers: list[str]) -> None:
         """Turn off only consumers that were turned on by wasting."""
         to_turn_off = [
-            eid for eid in self.state.consumers_turned_on_by_wasting
-            if eid.startswith("switch.")
+            eid
+            for eid in self.state.consumers_turned_on_by_wasting
+            if self._domain(eid)
         ]
         if to_turn_off:
-            await self.hass.services.async_call(
-                "switch",
-                "turn_off",
-                {"entity_id": to_turn_off},
-                blocking=True,
-            )
+            await self._call_turn_off(to_turn_off)
             _LOGGER.debug("Turned off (wasting list): %s", to_turn_off)
         self.state.consumers_turned_on_by_wasting.clear()
 
     async def _apply_saving(
         self, consumers: list[str], super_saving: bool
     ) -> None:
-        """Turn off all consumer switches; if super_saving, also turn off lights."""
+        """Turn off all consumer switches/input_booleans; if super_saving, also turn off lights."""
         if consumers:
-            await self.hass.services.async_call(
-                "switch",
-                "turn_off",
-                {"entity_id": consumers},
-                blocking=True,
-            )
+            await self._call_turn_off(consumers)
             _LOGGER.debug("Turned off all consumers: %s", consumers)
         if super_saving and self.lights_entity_ids:
             await self.hass.services.async_call(
@@ -127,12 +142,14 @@ class LoadManager:
         for entity_id in consumers:
             state = self.hass.states.get(entity_id)
             if state and state.state != "on":
-                await self.hass.services.async_call(
-                    "switch",
-                    "turn_on",
-                    {"entity_id": entity_id},
-                    blocking=True,
-                )
+                domain = self._domain(entity_id)
+                if domain:
+                    await self.hass.services.async_call(
+                        domain,
+                        "turn_on",
+                        {"entity_id": entity_id},
+                        blocking=True,
+                    )
                 self._last_turn_on_time = datetime.now(timezone.utc)
                 if entity_id not in self.state.consumers_turned_on_by_wasting:
                     self.state.consumers_turned_on_by_wasting.append(entity_id)
@@ -143,16 +160,21 @@ class LoadManager:
         self, consumer_entity_ids: list[str]
     ) -> None:
         """Turn off one consumer (reverse order) when discharge is over limit."""
-        consumers = self._switch_domain_entity_ids(consumer_entity_ids or [])
+        consumers = self._consumer_entity_ids(consumer_entity_ids or [])
         rev = list(reversed(consumers))
         for entity_id in rev:
             state = self.hass.states.get(entity_id)
             if state and state.state == "on":
-                await self.hass.services.async_call(
-                    "switch",
-                    "turn_off",
-                    {"entity_id": entity_id},
-                    blocking=True,
-                )
-                _LOGGER.debug("Discharge over limit: turned off one consumer %s", entity_id)
-                return
+                domain = self._domain(entity_id)
+                if domain:
+                    await self.hass.services.async_call(
+                        domain,
+                        "turn_off",
+                        {"entity_id": entity_id},
+                        blocking=True,
+                    )
+                    _LOGGER.debug(
+                        "Discharge over limit: turned off one consumer %s",
+                        entity_id,
+                    )
+                    return

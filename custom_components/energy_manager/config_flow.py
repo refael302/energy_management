@@ -81,7 +81,9 @@ def _data_schema_user(hass: HomeAssistant) -> vol.Schema:
             vol.Required(CONF_SOLAR_PRODUCTION_SENSOR): _power_sensor_selector(),
             vol.Required(CONF_HOUSE_CONSUMPTION_SENSOR): _power_sensor_selector(),
             vol.Required(CONF_CONSUMER_SWITCHES): selector.EntitySelector(
-                selector.EntityFilterSelectorConfig(domain="switch", multiple=True),
+                selector.EntityFilterSelectorConfig(
+                    domain=["switch", "input_boolean"], multiple=True
+                ),
             ),
             vol.Required(CONF_LATITUDE, default=lat): vol.Coerce(float),
             vol.Required(CONF_LONGITUDE, default=lon): vol.Coerce(float),

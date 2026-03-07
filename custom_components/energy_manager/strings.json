@@ -29,7 +29,7 @@
           "battery_power_sensor": "Sensor for battery power in W (positive = discharge). Example: sensor.solarman_battery_power",
           "solar_production_sensor": "Sensor for solar production power in W. Example: sensor.solar_production_power",
           "house_consumption_sensor": "Sensor for total house consumption in W. Example: sensor.house_power",
-          "consumer_switches": "Switches for heavy consumers (boiler, AC, pool, etc.). The order is the priority: first = turned on first when there is surplus, last = turned off first when saving. You can also add a group that contains these switches.",
+          "consumer_switches": "Switches or input booleans for heavy consumers (boiler, AC, pool, etc.). The order is the priority: first = turned on first when there is surplus, last = turned off first when saving. You can also add a group that contains these entities.",
           "latitude": "Home latitude in degrees (-90 to 90). Used for solar forecast. Default is your Home Assistant home location.",
           "longitude": "Home longitude in degrees (-180 to 180). Used for solar forecast.",
           "battery_capacity": "Battery capacity in kWh. Example: 20",
