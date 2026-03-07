@@ -41,6 +41,7 @@ async def async_setup_entry(
             EnergyManagerBatteryReserveStateSensor(coordinator, entry),
             EnergyManagerDailyMarginSensor(coordinator, entry),
             EnergyManagerStrategyReasonSensor(coordinator, entry),
+            EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
         ]
     )
 
@@ -213,4 +214,27 @@ class EnergyManagerStrategyReasonSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data:
             self._attr_native_value = data.get("strategy_reason", "")
+        self.async_write_ha_state()
+
+
+class EnergyManagerRecommendedToTurnOffSensor(EnergyManagerSensorBase):
+    """Recommendation to turn off intermediate devices when battery low and forecast short. State on = recommendation active."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "recommended_to_turn_off",
+            "Recommended to turn off",
+            icon="mdi:lightbulb-off-outline",
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        entity_ids: list[str] = []
+        if data:
+            entity_ids = data.get("recommended_to_turn_off_entity_ids") or []
+        self._attr_native_value = "on" if entity_ids else "off"
+        self._attr_extra_state_attributes = {"entity_id": entity_ids}
         self.async_write_ha_state()

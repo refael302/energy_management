@@ -20,6 +20,9 @@ _LOGGER = logging.getLogger(__name__)
 # Entities that can be used as consumers (turn_on/turn_off).
 CONSUMER_DOMAINS = ("switch", "input_boolean")
 
+# Domains that can be turned off in super-saving (light, switch, input_boolean, fan).
+SUPER_SAVING_TURN_OFF_DOMAINS = ("light", "switch", "input_boolean", "fan")
+
 
 @dataclass
 class LoadManagerState:
@@ -106,21 +109,40 @@ class LoadManager:
             _LOGGER.debug("Turned off (wasting list): %s", to_turn_off)
         self.state.consumers_turned_on_by_wasting.clear()
 
+    def _super_saving_entity_ids(self, entity_ids: list[str]) -> list[str]:
+        """Return only entities in domains we can turn off in super-saving."""
+        return [
+            eid
+            for eid in entity_ids
+            if eid.split(".", 1)[0] in SUPER_SAVING_TURN_OFF_DOMAINS
+        ]
+
+    async def _turn_off_super_saving_entities(self, entity_ids: list[str]) -> None:
+        """Call turn_off for each entity by domain (light, switch, input_boolean, fan)."""
+        filtered = self._super_saving_entity_ids(entity_ids)
+        if not filtered:
+            return
+        by_domain: dict[str, list[str]] = {}
+        for eid in filtered:
+            domain = eid.split(".", 1)[0]
+            by_domain.setdefault(domain, []).append(eid)
+        for domain, eids in by_domain.items():
+            await self.hass.services.async_call(
+                domain, "turn_off", {"entity_id": eids}, blocking=True
+            )
+
     async def _apply_saving(
         self, consumers: list[str], super_saving: bool
     ) -> None:
-        """Turn off all consumer switches/input_booleans; if super_saving, also turn off lights."""
+        """Turn off all consumer switches/input_booleans; if super_saving, also turn off configured devices (lights, switches, etc.)."""
         if consumers:
             await self._call_turn_off(consumers)
             _LOGGER.debug("Turned off all consumers: %s", consumers)
         if super_saving and self.lights_entity_ids:
-            await self.hass.services.async_call(
-                "light",
-                "turn_off",
-                {"entity_id": self.lights_entity_ids},
-                blocking=True,
+            await self._turn_off_super_saving_entities(self.lights_entity_ids)
+            _LOGGER.debug(
+                "Turned off super-saving devices: %s", self.lights_entity_ids
             )
-            _LOGGER.debug("Turned off lights (super saving): %s", self.lights_entity_ids)
         self.state.consumers_turned_on_by_wasting.clear()
 
     def _can_turn_on_another(self) -> bool:

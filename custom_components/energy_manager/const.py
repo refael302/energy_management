@@ -72,6 +72,7 @@ CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT = "discharge_limit_deadband_percent"
 CONF_BATTERY_CURRENT_SENSOR = "battery_current_sensor"
 CONF_MANUAL_OVERRIDE = "manual_override"
 CONF_LIGHTS_TO_TURN_OFF = "lights_to_turn_off"
+CONF_RECOMMENDED_TO_TURN_OFF = "recommended_to_turn_off"
 
 # Defaults (from YAML initial values)
 DEFAULT_BATTERY_CAPACITY = 20.0

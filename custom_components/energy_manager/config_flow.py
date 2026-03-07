@@ -26,6 +26,7 @@ from .const import (
     CONF_EOD_BATTERY_TARGET,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_LIGHTS_TO_TURN_OFF,
+    CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_MAX_BATTERY_CURRENT_AMPS,
     CONF_MINIMUM_BATTERY_RESERVE,
     CONF_SAFETY_FORECAST_FACTOR,
@@ -100,7 +101,16 @@ def _data_schema_user(hass: HomeAssistant) -> vol.Schema:
             ): vol.Coerce(int),
             vol.Optional(CONF_BATTERY_CURRENT_SENSOR): _sensor_selector(),
             vol.Optional(CONF_LIGHTS_TO_TURN_OFF): selector.EntitySelector(
-                selector.EntityFilterSelectorConfig(domain="light", multiple=True),
+                selector.EntityFilterSelectorConfig(
+                    domain=["light", "switch", "input_boolean", "fan"],
+                    multiple=True,
+                ),
+            ),
+            vol.Optional(CONF_RECOMMENDED_TO_TURN_OFF): selector.EntitySelector(
+                selector.EntityFilterSelectorConfig(
+                    domain=["light", "switch", "input_boolean", "fan"],
+                    multiple=True,
+                ),
             ),
         }
     )
@@ -136,9 +146,11 @@ class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             battery_current = user_input.pop(CONF_BATTERY_CURRENT_SENSOR, None)
             lights = user_input.pop(CONF_LIGHTS_TO_TURN_OFF, None) or []
+            recommended = user_input.pop(CONF_RECOMMENDED_TO_TURN_OFF, None) or []
             if battery_current:
                 user_input[CONF_BATTERY_CURRENT_SENSOR] = battery_current
             user_input[CONF_LIGHTS_TO_TURN_OFF] = lights
+            user_input[CONF_RECOMMENDED_TO_TURN_OFF] = recommended
             self._user_input = user_input
             return await self.async_step_strings()
         return self.async_show_form(

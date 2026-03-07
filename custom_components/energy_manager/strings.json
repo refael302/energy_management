@@ -22,7 +22,8 @@
           "discharge_limit_percent": "Discharge limit",
           "discharge_limit_deadband_percent": "Discharge limit deadband",
           "battery_current_sensor": "Battery current sensor (optional)",
-          "lights_to_turn_off": "Lights to turn off in super-saving (optional)"
+          "lights_to_turn_off": "Devices to turn off in super-saving (optional)",
+          "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
         },
         "data_description": {
           "battery_soc_sensor": "Sensor that reports battery state of charge in percent (0–100). Example: sensor.solarman_battery_soc",
@@ -42,7 +43,8 @@
           "discharge_limit_percent": "Discharge limit as percent of max current (0–100). Example: 80",
           "discharge_limit_deadband_percent": "Deadband in percent below discharge limit before allowing turn-on again. Example: 5",
           "battery_current_sensor": "Optional. Sensor for battery current in A (negative = charging). If not set, charge/discharge state uses power only.",
-          "lights_to_turn_off": "Optional. Lights to turn off in super energy saving mode (e.g. when battery very low)."
+          "lights_to_turn_off": "Optional. Devices (lights, switches, fans, etc.) to turn off automatically in super energy saving mode (e.g. when battery very low).",
+          "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off)."
         }
       },
       "strings": {

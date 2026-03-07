@@ -27,6 +27,7 @@ from .const import (
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_LATITUDE,
     CONF_LIGHTS_TO_TURN_OFF,
+    CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_LONGITUDE,
     CONF_MAX_BATTERY_CURRENT_AMPS,
     CONF_MINIMUM_BATTERY_RESERVE,
@@ -110,6 +111,13 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         lights = data.get(CONF_LIGHTS_TO_TURN_OFF) or []
         if isinstance(lights, str):
             lights = [lights]
+        self._recommended_to_turn_off_entity_ids = (
+            data.get(CONF_RECOMMENDED_TO_TURN_OFF) or []
+        )
+        if isinstance(self._recommended_to_turn_off_entity_ids, str):
+            self._recommended_to_turn_off_entity_ids = [
+                self._recommended_to_turn_off_entity_ids
+            ]
         self.load_manager = LoadManager(
             hass,
             consumer_switches,
@@ -182,6 +190,14 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             self._prev_discharge_state = self.model.discharge_state
 
+            # Recommendation: turn off intermediate devices when battery low and forecast short
+            recommended_entity_ids: list[str] = []
+            if self._recommended_to_turn_off_entity_ids and self.model.battery_status in (
+                "low",
+                "very low",
+            ) and self.model.daily_margin_kwh < 0:
+                recommended_entity_ids = list(self._recommended_to_turn_off_entity_ids)
+
             # 7. Expose for sensors
             return {
                 "model": self.model,
@@ -205,6 +221,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "battery_reserve_state": self.model.battery_status,
                 "daily_margin_kwh": self.model.daily_margin_kwh,
                 "can_turn_on_heavy_consumer": self.model.can_turn_on_heavy_consumer,
+                "recommended_to_turn_off_entity_ids": recommended_entity_ids,
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)
