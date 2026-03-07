@@ -67,34 +67,41 @@ def _battery_sensor_selector() -> selector.Selector:
     )
 
 
-DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_BATTERY_SOC_SENSOR): _battery_sensor_selector(),
-        vol.Required(CONF_BATTERY_POWER_SENSOR): _power_sensor_selector(),
-        vol.Required(CONF_SOLAR_PRODUCTION_SENSOR): _power_sensor_selector(),
-        vol.Required(CONF_HOUSE_CONSUMPTION_SENSOR): _power_sensor_selector(),
-        vol.Required(CONF_CONSUMER_SWITCHES): selector.EntitySelector(
-            selector.EntityFilterSelectorConfig(domain="switch", multiple=True),
-        ),
-        vol.Required(CONF_LATITUDE, default=32.08): vol.Coerce(float),
-        vol.Required(CONF_LONGITUDE, default=34.78): vol.Coerce(float),
-        vol.Required(CONF_BATTERY_CAPACITY, default=20.0): vol.Coerce(float),
-        vol.Required(CONF_BASELINE_CONSUMPTION, default=0.8): vol.Coerce(float),
-        vol.Required(CONF_MINIMUM_BATTERY_RESERVE, default=20): vol.Coerce(int),
-        vol.Required(CONF_SAFETY_FORECAST_FACTOR, default=90): vol.Coerce(int),
-        vol.Required(CONF_CONSUMER_DELAY, default=5): vol.Coerce(int),
-        vol.Required(CONF_EOD_BATTERY_TARGET, default=90): vol.Coerce(int),
-        vol.Required(CONF_MAX_BATTERY_CURRENT_AMPS, default=36): vol.Coerce(int),
-        vol.Required(CONF_DISCHARGE_LIMIT_PERCENT, default=80): vol.Coerce(int),
-        vol.Required(
-            CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, default=5
-        ): vol.Coerce(int),
-        vol.Optional(CONF_BATTERY_CURRENT_SENSOR): _sensor_selector(),
-        vol.Optional(CONF_LIGHTS_TO_TURN_OFF): selector.EntitySelector(
-            selector.EntityFilterSelectorConfig(domain="light", multiple=True),
-        ),
-    }
-)
+def _data_schema_user(hass: HomeAssistant) -> vol.Schema:
+    """Build user step schema with defaults from HA config (e.g. home location)."""
+    try:
+        lat = float(hass.config.latitude)
+        lon = float(hass.config.longitude)
+    except (TypeError, ValueError):
+        lat, lon = 32.08, 34.78
+    return vol.Schema(
+        {
+            vol.Required(CONF_BATTERY_SOC_SENSOR): _battery_sensor_selector(),
+            vol.Required(CONF_BATTERY_POWER_SENSOR): _power_sensor_selector(),
+            vol.Required(CONF_SOLAR_PRODUCTION_SENSOR): _power_sensor_selector(),
+            vol.Required(CONF_HOUSE_CONSUMPTION_SENSOR): _power_sensor_selector(),
+            vol.Required(CONF_CONSUMER_SWITCHES): selector.EntitySelector(
+                selector.EntityFilterSelectorConfig(domain="switch", multiple=True),
+            ),
+            vol.Required(CONF_LATITUDE, default=lat): vol.Coerce(float),
+            vol.Required(CONF_LONGITUDE, default=lon): vol.Coerce(float),
+            vol.Required(CONF_BATTERY_CAPACITY, default=20.0): vol.Coerce(float),
+            vol.Required(CONF_BASELINE_CONSUMPTION, default=0.8): vol.Coerce(float),
+            vol.Required(CONF_MINIMUM_BATTERY_RESERVE, default=20): vol.Coerce(int),
+            vol.Required(CONF_SAFETY_FORECAST_FACTOR, default=90): vol.Coerce(int),
+            vol.Required(CONF_CONSUMER_DELAY, default=5): vol.Coerce(int),
+            vol.Required(CONF_EOD_BATTERY_TARGET, default=90): vol.Coerce(int),
+            vol.Required(CONF_MAX_BATTERY_CURRENT_AMPS, default=36): vol.Coerce(int),
+            vol.Required(CONF_DISCHARGE_LIMIT_PERCENT, default=80): vol.Coerce(int),
+            vol.Required(
+                CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, default=5
+            ): vol.Coerce(int),
+            vol.Optional(CONF_BATTERY_CURRENT_SENSOR): _sensor_selector(),
+            vol.Optional(CONF_LIGHTS_TO_TURN_OFF): selector.EntitySelector(
+                selector.EntityFilterSelectorConfig(domain="light", multiple=True),
+            ),
+        }
+    )
 
 
 def _strings_data_schema() -> vol.Schema:
@@ -132,7 +139,10 @@ class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             user_input[CONF_LIGHTS_TO_TURN_OFF] = lights
             self._user_input = user_input
             return await self.async_step_strings()
-        return self.async_show_form(step_id="user", data_schema=DATA_SCHEMA)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=_data_schema_user(self.hass),
+        )
 
     async def async_step_strings(
         self, user_input: dict[str, Any] | None = None

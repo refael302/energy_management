@@ -1,0 +1,113 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sensors and parameters",
+        "description": "Select sensors and set energy parameters. You can change these later from the integration options.",
+        "data": {
+          "battery_soc_sensor": "Battery state of charge (SOC) sensor",
+          "battery_power_sensor": "Battery power sensor",
+          "solar_production_sensor": "Solar production power sensor",
+          "house_consumption_sensor": "House consumption power sensor",
+          "consumer_switches": "Consumer switches (heavy loads)",
+          "latitude": "Latitude",
+          "longitude": "Longitude",
+          "battery_capacity": "Battery capacity",
+          "baseline_consumption": "Baseline consumption",
+          "minimum_battery_reserve": "Minimum battery reserve",
+          "safety_forecast_factor": "Safety forecast factor",
+          "consumer_delay": "Consumer delay",
+          "eod_battery_target": "End-of-day battery target",
+          "max_battery_current_amps": "Max battery current",
+          "discharge_limit_percent": "Discharge limit",
+          "discharge_limit_deadband_percent": "Discharge limit deadband",
+          "battery_current_sensor": "Battery current sensor (optional)",
+          "lights_to_turn_off": "Lights to turn off in super-saving (optional)"
+        },
+        "data_description": {
+          "battery_soc_sensor": "Sensor that reports battery state of charge in percent (0–100). Example: sensor.solarman_battery_soc",
+          "battery_power_sensor": "Sensor for battery power in W (positive = discharge). Example: sensor.solarman_battery_power",
+          "solar_production_sensor": "Sensor for solar production power in W. Example: sensor.solar_production_power",
+          "house_consumption_sensor": "Sensor for total house consumption in W. Example: sensor.house_power",
+          "consumer_switches": "Switches for heavy consumers (boiler, AC, pool, etc.). The order is the priority: first = turned on first when there is surplus, last = turned off first when saving. You can also add a group that contains these switches.",
+          "latitude": "Home latitude in degrees (-90 to 90). Used for solar forecast. Default is your Home Assistant home location.",
+          "longitude": "Home longitude in degrees (-180 to 180). Used for solar forecast.",
+          "battery_capacity": "Battery capacity in kWh. Example: 20",
+          "baseline_consumption": "Estimated baseline house consumption in kW (average when no heavy consumers). Example: 0.8",
+          "minimum_battery_reserve": "Emergency reserve as percent of battery capacity (0–100). Not used for consumers. Example: 20",
+          "safety_forecast_factor": "Safety factor for daily solar forecast in percent (10–100). 90 = use 90% of forecast. Example: 90",
+          "consumer_delay": "Delay in minutes between turning on each consumer when in wasting mode. Example: 5",
+          "eod_battery_target": "Target battery level at end of day in percent (0–100). Example: 90",
+          "max_battery_current_amps": "Max battery current in A (for charge/discharge state). Example: 36",
+          "discharge_limit_percent": "Discharge limit as percent of max current (0–100). Example: 80",
+          "discharge_limit_deadband_percent": "Deadband in percent below discharge limit before allowing turn-on again. Example: 5",
+          "battery_current_sensor": "Optional. Sensor for battery current in A (negative = charging). If not set, charge/discharge state uses power only.",
+          "lights_to_turn_off": "Optional. Lights to turn off in super energy saving mode (e.g. when battery very low)."
+        }
+      },
+      "strings": {
+        "title": "PV strings (panels)",
+        "description": "Configure two PV strings for solar forecast. Each string: size in kW, tilt and azimuth in degrees.",
+        "data": {
+          "string_0_system_size_kw": "String 1 – capacity (kW)",
+          "string_0_tilt": "String 1 – tilt (°)",
+          "string_0_azimuth": "String 1 – azimuth (°)",
+          "string_1_system_size_kw": "String 2 – capacity (kW)",
+          "string_1_tilt": "String 2 – tilt (°)",
+          "string_1_azimuth": "String 2 – azimuth (°)"
+        },
+        "data_description": {
+          "string_0_system_size_kw": "Installed capacity of first string in kW. Example: 5",
+          "string_0_tilt": "Panel tilt from horizontal in degrees (0–90). Example: 30",
+          "string_0_azimuth": "Panel azimuth: 0 = South, -90 = East, 90 = West, ±180 = North. Example: 0",
+          "string_1_system_size_kw": "Installed capacity of second string in kW. Example: 5",
+          "string_1_tilt": "Panel tilt from horizontal in degrees (0–90). Example: 30",
+          "string_1_azimuth": "Panel azimuth in degrees. Example: 0"
+        }
+      },
+      "init": {
+        "title": "Options",
+        "data": {
+          "string_0_system_size_kw": "String 1 – capacity (kW)",
+          "string_0_tilt": "String 1 – tilt (°)",
+          "string_0_azimuth": "String 1 – azimuth (°)",
+          "string_1_system_size_kw": "String 2 – capacity (kW)",
+          "string_1_tilt": "String 2 – tilt (°)",
+          "string_1_azimuth": "String 2 – azimuth (°)"
+        },
+        "data_description": {
+          "string_0_system_size_kw": "Capacity in kW. Example: 5",
+          "string_0_tilt": "Tilt in degrees (0–90). Example: 30",
+          "string_0_azimuth": "Azimuth: 0=South, -90=East, 90=West. Example: 0",
+          "string_1_system_size_kw": "Capacity in kW. Example: 5",
+          "string_1_tilt": "Tilt in degrees. Example: 30",
+          "string_1_azimuth": "Azimuth in degrees. Example: 0"
+        }
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "title": "Edit PV strings",
+          "description": "Change panel string parameters. Other settings (sensors, capacity, location, etc.) can be changed by removing and re-adding the integration.",
+          "data": {
+            "string_0_system_size_kw": "String 1 – capacity (kW)",
+            "string_0_tilt": "String 1 – tilt (°)",
+            "string_0_azimuth": "String 1 – azimuth (°)",
+            "string_1_system_size_kw": "String 2 – capacity (kW)",
+            "string_1_tilt": "String 2 – tilt (°)",
+            "string_1_azimuth": "String 2 – azimuth (°)"
+          },
+          "data_description": {
+            "string_0_system_size_kw": "Capacity in kW. Example: 5",
+            "string_0_tilt": "Tilt in degrees (0–90). Example: 30",
+            "string_0_azimuth": "Azimuth: 0=South, -90=East, 90=West. Example: 0",
+            "string_1_system_size_kw": "Capacity in kW. Example: 5",
+            "string_1_tilt": "Tilt in degrees. Example: 30",
+            "string_1_azimuth": "Azimuth in degrees. Example: 0"
+          }
+        }
+      }
+    }
+  }
+}

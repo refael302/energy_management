@@ -1,0 +1,99 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "חיישנים ופרמטרים",
+        "description": "בחר חיישנים והגדר פרמטרי אנרגיה. ניתן לשנות בהמשך מהאפשרויות של האינטגרציה.",
+        "data": {
+          "battery_soc_sensor": "חיישן מצב טעינת סוללה (SOC)",
+          "battery_power_sensor": "חיישן הספק סוללה",
+          "solar_production_sensor": "חיישן ייצור סולארי",
+          "house_consumption_sensor": "חיישן צריכת בית",
+          "consumer_switches": "מתגי צרכנים (עומסים כבדים)",
+          "latitude": "קו רוחב",
+          "longitude": "קו אורך",
+          "battery_capacity": "קיבולת סוללה",
+          "baseline_consumption": "צריכה בסיסית",
+          "minimum_battery_reserve": "רזרבה מינימלית לסוללה",
+          "safety_forecast_factor": "מקדם בטיחות לתחזית",
+          "consumer_delay": "השהיה בין הפעלות צרכן",
+          "eod_battery_target": "יעד סוללה לסוף יום",
+          "max_battery_current_amps": "זרם סוללה מקסימלי",
+          "discharge_limit_percent": "סף פריקה",
+          "discharge_limit_deadband_percent": "אזור מת (deadband) לפריקה",
+          "battery_current_sensor": "חיישן זרם סוללה (אופציונלי)",
+          "lights_to_turn_off": "תאורות לכיבוי במצב חיסכון קיצוני (אופציונלי)"
+        },
+        "data_description": {
+          "battery_soc_sensor": "חיישן שמציג אחוז טעינת סוללה (0–100). דוגמה: sensor.solarman_battery_soc",
+          "battery_power_sensor": "חיישן הספק סוללה ב־W (חיובי = פריקה). דוגמה: sensor.solarman_battery_power",
+          "solar_production_sensor": "חיישן הספק ייצור סולארי ב־W. דוגמה: sensor.solar_production_power",
+          "house_consumption_sensor": "חיישן צריכת בית כוללת ב־W. דוגמה: sensor.house_power",
+          "consumer_switches": "מתגים לצרכנים כבדים (דוד, מזגן, בריכה וכו'). הסדר = עדיפות: הראשון יודלק ראשון כשיש עודף, האחרון יכבה ראשון בחיסכון. אפשר גם לבחור קבוצה שמכילה את המתגים.",
+          "latitude": "קו רוחב הבית במעלות (-90 עד 90). משמש לתחזית שמש. ברירת מחדל = מיקום הבית של Home Assistant.",
+          "longitude": "קו אורך הבית במעלות (-180 עד 180). משמש לתחזית שמש.",
+          "battery_capacity": "קיבולת סוללה ב־kWh. דוגמה: 20",
+          "baseline_consumption": "צריכת בית משוערת ב־kW (ממוצע בלי צרכנים כבדים). דוגמה: 0.8",
+          "minimum_battery_reserve": "רזרבה לחירום כאחוז מקיבולת הסוללה (0–100). לא משמשת לצרכנים. דוגמה: 20",
+          "safety_forecast_factor": "מקדם בטיחות לתחזית יומית באחוזים (10–100). 90 = שימוש ב־90% מהתחזית. דוגמה: 90",
+          "consumer_delay": "השהיה בדקות בין הדלקת כל צרכן במצב \"בזבוז\". דוגמה: 5",
+          "eod_battery_target": "יעד רמת סוללה בסוף היום באחוזים (0–100). דוגמה: 90",
+          "max_battery_current_amps": "זרם סוללה מקסימלי ב־A (למצב טעינה/פריקה). דוגמה: 36",
+          "discharge_limit_percent": "סף פריקה כאחוז מהזרם המקסימלי (0–100). דוגמה: 80",
+          "discharge_limit_deadband_percent": "אזור מת באחוזים מתחת לסף הפריקה לפני הפעלה מחדש. דוגמה: 5",
+          "battery_current_sensor": "אופציונלי. חיישן זרם סוללה ב־A (שלילי = טעינה). אם לא מוגדר, מצב טעינה/פריקה מחושב מההספק בלבד.",
+          "lights_to_turn_off": "אופציונלי. תאורות לכיבוי במצב חיסכון קיצוני (למשל כשהסוללה נמוכה מאוד)."
+        }
+      },
+      "strings": {
+        "title": "סטרינגים סולאריים (פאנלים)",
+        "description": "הגדרת שני סטרינגים לתחזית שמש. לכל סטרינג: גודל ב־kW, זווית הטיה ואזימוט במעלות.",
+        "data": {
+          "string_0_system_size_kw": "סטרינג 1 – קיבולת (kW)",
+          "string_0_tilt": "סטרינג 1 – הטיה (°)",
+          "string_0_azimuth": "סטרינג 1 – אזימוט (°)",
+          "string_1_system_size_kw": "סטרינג 2 – קיבולת (kW)",
+          "string_1_tilt": "סטרינג 2 – הטיה (°)",
+          "string_1_azimuth": "סטרינג 2 – אזימוט (°)"
+        },
+        "data_description": {
+          "string_0_system_size_kw": "קיבולת מותקנת של הסטרינג הראשון ב־kW. דוגמה: 5",
+          "string_0_tilt": "זווית הפאנל מאוזן במעלות (0–90). דוגמה: 30",
+          "string_0_azimuth": "אזימוט: 0 = דרום, -90 = מזרח, 90 = מערב, ±180 = צפון. דוגמה: 0",
+          "string_1_system_size_kw": "קיבולת מותקנת של הסטרינג השני ב־kW. דוגמה: 5",
+          "string_1_tilt": "זווית הפאנל במעלות (0–90). דוגמה: 30",
+          "string_1_azimuth": "אזימוט במעלות. דוגמה: 0"
+        }
+      },
+      "init": {
+        "title": "אפשרויות",
+        "data": {},
+        "data_description": {}
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "title": "עריכת סטרינגים סולאריים",
+          "description": "שינוי פרמטרי הסטרינגים. שאר ההגדרות (חיישנים, קיבולת, מיקום וכו') ניתן לשנות על ידי הסרה והוספה מחדש של האינטגרציה.",
+          "data": {
+            "string_0_system_size_kw": "סטרינג 1 – קיבולת (kW)",
+            "string_0_tilt": "סטרינג 1 – הטיה (°)",
+            "string_0_azimuth": "סטרינג 1 – אזימוט (°)",
+            "string_1_system_size_kw": "סטרינג 2 – קיבולת (kW)",
+            "string_1_tilt": "סטרינג 2 – הטיה (°)",
+            "string_1_azimuth": "סטרינג 2 – אזימוט (°)"
+          },
+          "data_description": {
+            "string_0_system_size_kw": "קיבולת ב־kW. דוגמה: 5",
+            "string_0_tilt": "הטיה במעלות (0–90). דוגמה: 30",
+            "string_0_azimuth": "אזימוט: 0=דרום, -90=מזרח, 90=מערב. דוגמה: 0",
+            "string_1_system_size_kw": "קיבולת ב־kW. דוגמה: 5",
+            "string_1_tilt": "הטיה במעלות. דוגמה: 30",
+            "string_1_azimuth": "אזימוט במעלות. דוגמה: 0"
+          }
+        }
+      }
+    }
+  }
+}
