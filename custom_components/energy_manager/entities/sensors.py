@@ -118,7 +118,7 @@ class EnergyManagerAvailablePowerSensor(EnergyManagerSensorBase):
             icon="mdi:flash",
             device_class=SensorDeviceClass.POWER,
             state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfPower.KILOWATT,
+            unit=UnitOfPower.KILO_WATT,
         )
 
 
@@ -134,7 +134,7 @@ class EnergyManagerForecastRemainingSensor(EnergyManagerSensorBase):
             icon="mdi:solar-power",
             device_class=SensorDeviceClass.ENERGY,
             state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfEnergy.KILOWATT_HOUR,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
 
@@ -150,7 +150,7 @@ class EnergyManagerForecastNextHourSensor(EnergyManagerSensorBase):
             icon="mdi:solar-power",
             device_class=SensorDeviceClass.ENERGY,
             state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfEnergy.KILOWATT_HOUR,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
 
@@ -166,7 +166,7 @@ class EnergyManagerForecastCurrentPowerSensor(EnergyManagerSensorBase):
             icon="mdi:solar-power",
             device_class=SensorDeviceClass.POWER,
             state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfPower.KILOWATT,
+            unit=UnitOfPower.KILO_WATT,
         )
 
 
@@ -202,7 +202,7 @@ class EnergyManagerDailyMarginSensor(EnergyManagerSensorBase):
             icon="mdi:delta",
             device_class=SensorDeviceClass.ENERGY,
             state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfEnergy.KILOWATT_HOUR,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
 
