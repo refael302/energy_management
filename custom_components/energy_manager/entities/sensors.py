@@ -209,7 +209,6 @@ class EnergyManagerForecastRemainingSensor(EnergyManagerSensorBase):
             "Forecast Remaining Today",
             icon="mdi:solar-power",
             device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.MEASUREMENT,
             unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
@@ -225,7 +224,6 @@ class EnergyManagerForecastNextHourSensor(EnergyManagerSensorBase):
             "Forecast Next Hour",
             icon="mdi:solar-power",
             device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.MEASUREMENT,
             unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
@@ -257,7 +255,6 @@ class EnergyManagerForecastTomorrowSensor(EnergyManagerSensorBase):
             "Forecast Tomorrow",
             icon="mdi:solar-power",
             device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.MEASUREMENT,
             unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
@@ -293,7 +290,6 @@ class EnergyManagerDailyMarginSensor(EnergyManagerSensorBase):
             "Daily Margin",
             icon="mdi:delta",
             device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.MEASUREMENT,
             unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
@@ -309,7 +305,6 @@ class EnergyManagerNeededEnergyTodaySensor(EnergyManagerSensorBase):
             "Needed Energy Today",
             icon="mdi:flash",
             device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.MEASUREMENT,
             unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
@@ -325,7 +320,6 @@ class EnergyManagerPvRemainingSafeSensor(EnergyManagerSensorBase):
             "PV Remaining Today (Safe)",
             icon="mdi:solar-power",
             device_class=SensorDeviceClass.ENERGY,
-            state_class=SensorStateClass.MEASUREMENT,
             unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
 
