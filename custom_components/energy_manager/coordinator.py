@@ -222,6 +222,12 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "daily_margin_kwh": self.model.daily_margin_kwh,
                 "can_turn_on_heavy_consumer": self.model.can_turn_on_heavy_consumer,
                 "recommended_to_turn_off_entity_ids": recommended_entity_ids,
+                "charge_state": self.model.charge_state,
+                "discharge_state": self.model.discharge_state,
+                "needed_energy_today_kwh": self.model.needed_energy_today_kwh,
+                "pv_remaining_today_safe_kwh": self.model.pv_remaining_today_safe_kwh,
+                "can_waste_energy": self.model.can_waste_energy,
+                "hours_until_eod": self.model.hours_until_eod,
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)

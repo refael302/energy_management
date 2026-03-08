@@ -36,12 +36,25 @@ async def async_setup_entry(
         [
             EnergyManagerModeSensor(coordinator, entry),
             EnergyManagerAvailablePowerSensor(coordinator, entry),
+            EnergyManagerBatterySocSensor(coordinator, entry),
+            EnergyManagerSolarProductionSensor(coordinator, entry),
+            EnergyManagerHouseConsumptionSensor(coordinator, entry),
+            EnergyManagerBatteryPowerSensor(coordinator, entry),
             EnergyManagerForecastRemainingSensor(coordinator, entry),
             EnergyManagerForecastNextHourSensor(coordinator, entry),
             EnergyManagerForecastCurrentPowerSensor(coordinator, entry),
+            EnergyManagerForecastTomorrowSensor(coordinator, entry),
             EnergyManagerBatteryReserveStateSensor(coordinator, entry),
             EnergyManagerDailyMarginSensor(coordinator, entry),
+            EnergyManagerNeededEnergyTodaySensor(coordinator, entry),
+            EnergyManagerPvRemainingSafeSensor(coordinator, entry),
+            EnergyManagerHoursUntilEodSensor(coordinator, entry),
+            EnergyManagerStrategyRecommendationSensor(coordinator, entry),
             EnergyManagerStrategyReasonSensor(coordinator, entry),
+            EnergyManagerChargeStateSensor(coordinator, entry),
+            EnergyManagerDischargeStateSensor(coordinator, entry),
+            EnergyManagerCanTurnOnHeavyConsumerSensor(coordinator, entry),
+            EnergyManagerCanWasteEnergySensor(coordinator, entry),
             EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
         ]
     )
@@ -122,6 +135,69 @@ class EnergyManagerAvailablePowerSensor(EnergyManagerSensorBase):
         )
 
 
+class EnergyManagerBatterySocSensor(EnergyManagerSensorBase):
+    """Battery state of charge (%)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "battery_soc",
+            "Battery SOC",
+            icon="mdi:battery",
+            state_class=SensorStateClass.MEASUREMENT,
+            unit="%",
+        )
+
+
+class EnergyManagerSolarProductionSensor(EnergyManagerSensorBase):
+    """Current solar production (kW)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "solar_production_kw",
+            "Solar Production",
+            icon="mdi:solar-power",
+            device_class=SensorDeviceClass.POWER,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfPower.KILO_WATT,
+        )
+
+
+class EnergyManagerHouseConsumptionSensor(EnergyManagerSensorBase):
+    """Current house consumption (kW)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "house_consumption_kw",
+            "House Consumption",
+            icon="mdi:home-lightning-bolt",
+            device_class=SensorDeviceClass.POWER,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfPower.KILO_WATT,
+        )
+
+
+class EnergyManagerBatteryPowerSensor(EnergyManagerSensorBase):
+    """Battery power (kW); positive = discharge, negative = charge."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "battery_power_kw",
+            "Battery Power",
+            icon="mdi:battery-charging",
+            device_class=SensorDeviceClass.POWER,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfPower.KILO_WATT,
+        )
+
+
 class EnergyManagerForecastRemainingSensor(EnergyManagerSensorBase):
     """Forecast remaining today (kWh)."""
 
@@ -170,6 +246,22 @@ class EnergyManagerForecastCurrentPowerSensor(EnergyManagerSensorBase):
         )
 
 
+class EnergyManagerForecastTomorrowSensor(EnergyManagerSensorBase):
+    """Forecast solar production for tomorrow (kWh)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "forecast_tomorrow_kwh",
+            "Forecast Tomorrow",
+            icon="mdi:solar-power",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+
+
 class EnergyManagerBatteryReserveStateSensor(EnergyManagerSensorBase):
     """Battery reserve state: very low / low / medium / high / full."""
 
@@ -206,6 +298,74 @@ class EnergyManagerDailyMarginSensor(EnergyManagerSensorBase):
         )
 
 
+class EnergyManagerNeededEnergyTodaySensor(EnergyManagerSensorBase):
+    """Needed energy until end of day (kWh)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "needed_energy_today_kwh",
+            "Needed Energy Today",
+            icon="mdi:flash",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+
+
+class EnergyManagerPvRemainingSafeSensor(EnergyManagerSensorBase):
+    """PV remaining today with safety factor applied (kWh)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "pv_remaining_today_safe_kwh",
+            "PV Remaining Today (Safe)",
+            icon="mdi:solar-power",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+
+
+class EnergyManagerHoursUntilEodSensor(EnergyManagerSensorBase):
+    """Hours until end of day (sunset)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "hours_until_eod",
+            "Hours Until End of Day",
+            icon="mdi:clock-outline",
+            state_class=SensorStateClass.MEASUREMENT,
+            unit="h",
+        )
+
+
+class EnergyManagerStrategyRecommendationSensor(EnergyManagerSensorBase):
+    """Strategy level: low / medium / high / full."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "strategy_recommendation",
+            "Strategy Recommendation",
+            icon="mdi:strategy",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("strategy_recommendation", "unknown")
+        self.async_write_ha_state()
+
+
 class EnergyManagerStrategyReasonSensor(EnergyManagerSensorBase):
     """Reason for current battery strategy recommendation."""
 
@@ -224,6 +384,92 @@ class EnergyManagerStrategyReasonSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data:
             self._attr_native_value = data.get("strategy_reason", "")
+        self.async_write_ha_state()
+
+
+class EnergyManagerChargeStateSensor(EnergyManagerSensorBase):
+    """Battery charge state: off / on / max."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "charge_state",
+            "Charge State",
+            icon="mdi:battery-arrow-up",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("charge_state", "unknown")
+        self.async_write_ha_state()
+
+
+class EnergyManagerDischargeStateSensor(EnergyManagerSensorBase):
+    """Battery discharge state: off / on / max."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "discharge_state",
+            "Discharge State",
+            icon="mdi:battery-arrow-down",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("discharge_state", "unknown")
+        self.async_write_ha_state()
+
+
+class EnergyManagerCanTurnOnHeavyConsumerSensor(EnergyManagerSensorBase):
+    """Whether a heavy consumer can be turned on (on/off)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "can_turn_on_heavy_consumer",
+            "Can Turn On Heavy Consumer",
+            icon="mdi:power-plug",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            val = data.get("can_turn_on_heavy_consumer", False)
+            self._attr_native_value = "on" if val else "off"
+        self.async_write_ha_state()
+
+
+class EnergyManagerCanWasteEnergySensor(EnergyManagerSensorBase):
+    """Whether energy wasting mode is allowed (on/off)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "can_waste_energy",
+            "Can Waste Energy",
+            icon="mdi:flash",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            val = data.get("can_waste_energy", False)
+            self._attr_native_value = "on" if val else "off"
         self.async_write_ha_state()
 
 
