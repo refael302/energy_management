@@ -165,6 +165,14 @@ class ForecastEngine:
         dni = hourly.get("direct_normal_irradiance", [])
         dhi = hourly.get("diffuse_radiation", [])
 
+        _LOGGER.debug(
+            "Open-Meteo: %d hours, first=%s last=%s, GHI sample=%s",
+            len(times_str),
+            times_str[0] if times_str else None,
+            times_str[-1] if times_str else None,
+            ghi[:5] if len(ghi) >= 5 else ghi,
+        )
+
         if not times_str or not ghi:
             return SolarForecast(available=False)
 
@@ -177,6 +185,13 @@ class ForecastEngine:
             return dt
 
         times = [_parse_time(ts) for ts in times_str]
+        _LOGGER.debug(
+            "Forecast now=%s, times range %s .. %s",
+            now.isoformat(),
+            times[0].isoformat() if times else None,
+            times[-1].isoformat() if times else None,
+        )
+
         # Ensure same length
         n = len(times)
         ghi = (ghi + [None] * n)[:n]
@@ -201,38 +216,43 @@ class ForecastEngine:
                 sum(p[hour_idx] for p in power_per_string)
             )
 
-        # forecast_next_hour: energy in the next hour (kWh) = power (kW) * 1h
+        # Index-based: which hour slot does "now" fall into (robust to timezone/year)
         now_ts = now.timestamp()
-        next_hour_kwh = 0.0
-        current_power_kw = 0.0
-        for hour_idx, t in enumerate(times):
-            start = t.timestamp()
-            end = start + 3600
-            if start <= now_ts < end:
-                current_power_kw = total_power_per_hour[hour_idx]
-                next_hour_kwh = current_power_kw
-                if hour_idx + 1 < len(times):
-                    next_hour_kwh = total_power_per_hour[hour_idx + 1]
-                break
-            if hour_idx + 1 < len(times) and times[hour_idx + 1].timestamp() > now_ts:
-                next_hour_kwh = total_power_per_hour[hour_idx + 1]
-                current_power_kw = total_power_per_hour[hour_idx]
-                break
+        t0_ts = times[0].timestamp()
+        hour_index = int((now_ts - t0_ts) / 3600)
+        hour_index = max(0, min(hour_index, len(times) - 1))
 
-        # Today remaining: sum of hourly energy from now until end of today (UTC)
-        today_remaining_kwh = 0.0
-        for hour_idx, t in enumerate(times):
-            if t.date() > now.date():
-                break
-            if t >= now and t.date() == now.date():
-                today_remaining_kwh += total_power_per_hour[hour_idx]
+        current_power_kw = total_power_per_hour[hour_index]
+        next_hour_kwh = (
+            total_power_per_hour[hour_index + 1]
+            if hour_index + 1 < len(times)
+            else 0.0
+        )
+        # Today remaining: from current hour to end of first 24h (API first day)
+        today_end_idx = min(24, len(times))
+        today_remaining_kwh = sum(
+            total_power_per_hour[i]
+            for i in range(hour_index, today_end_idx)
+        )
+        # Tomorrow: next 24h (API second day)
+        tomorrow_kwh = sum(
+            total_power_per_hour[i]
+            for i in range(24, min(48, len(times)))
+        )
 
-        # Tomorrow total
-        next_day = now.date() + timedelta(days=1)
-        tomorrow_kwh = 0.0
-        for hour_idx, t in enumerate(times):
-            if t.date() == next_day:
-                tomorrow_kwh += total_power_per_hour[hour_idx]
+        if sum(total_power_per_hour) == 0:
+            _LOGGER.warning(
+                "Forecast computed all zeros (hour_index=%s, now=%s)",
+                hour_index,
+                now.isoformat(),
+            )
+        _LOGGER.debug(
+            "Forecast hour_index=%s, next_hour_kwh=%s, today_remaining=%s, tomorrow=%s",
+            hour_index,
+            next_hour_kwh,
+            today_remaining_kwh,
+            tomorrow_kwh,
+        )
 
         result = SolarForecast(
             forecast_next_hour_kwh=round(next_hour_kwh, 2),
