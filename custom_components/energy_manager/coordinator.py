@@ -27,6 +27,7 @@ from .const import (
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_LATITUDE,
     CONF_LIGHTS_TO_TURN_OFF,
+    CONF_MANUAL_OVERRIDE,
     CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_LONGITUDE,
     CONF_MAX_BATTERY_CURRENT_AMPS,
@@ -50,6 +51,23 @@ def _float_state(hass: HomeAssistant, entity_id: str) -> float:
         return float(state.state)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _normalize_consumer_entity_ids(raw: Any) -> list[str]:
+    """Normalize consumer list from config (support list of strings or list of dicts with entity_id)."""
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict):
+            eid = item.get("entity_id") or item.get("id")
+            if isinstance(eid, str):
+                out.append(eid)
+    return out
 
 
 def _hours_until_sunset(hass: HomeAssistant) -> float:
@@ -175,7 +193,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.decision_engine.update_charge_state_duration(
                 self.model.charge_state, UPDATE_INTERVAL / 60.0
             )
-            decision = self.decision_engine.decide(self.model)
+            current_config = {**self.entry.data, **(self.entry.options or {})}
+            manual_override = bool(current_config.get(CONF_MANUAL_OVERRIDE, False))
+            decision = self.decision_engine.decide(self.model, manual_override=manual_override)
             self._last_decision = decision
 
             # 5. Load manager actions
@@ -191,8 +211,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.model.discharge_state == "max"
                 and self._prev_discharge_state != "max"
             ):
+                consumer_list = _normalize_consumer_entity_ids(
+                    current_config.get(CONF_CONSUMER_SWITCHES)
+                )
                 await self.load_manager.discharge_over_limit_turn_off_one(
-                    self._config.get(CONF_CONSUMER_SWITCHES) or []
+                    consumer_list
                 )
             self._prev_discharge_state = self.model.discharge_state
 
@@ -205,15 +228,16 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ):
                 recommended_entity_ids = list(self._recommended_to_turn_off_entity_ids)
 
-            # Count consumers (configured switches/input_booleans) that are on
-            consumer_entity_ids = self._config.get(CONF_CONSUMER_SWITCHES) or []
-            if isinstance(consumer_entity_ids, str):
-                consumer_entity_ids = [consumer_entity_ids]
+            # Count consumers (use current config; normalize list for EntitySelector dict format)
+            consumer_entity_ids = _normalize_consumer_entity_ids(
+                current_config.get(CONF_CONSUMER_SWITCHES)
+            )
             consumers_on_count = 0
             for eid in consumer_entity_ids:
                 state = self.hass.states.get(eid)
                 if state and state.state == "on":
                     consumers_on_count += 1
+            consumers_total = len(consumer_entity_ids)
 
             # 7. Expose for sensors (forecast-related as None when unavailable so sensors show unavailable)
             if forecast_available:
@@ -255,6 +279,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "can_waste_energy": self.model.can_waste_energy,
                 "hours_until_eod": self.model.hours_until_eod,
                 "consumers_on_count": consumers_on_count,
+                "consumers_total": consumers_total,
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)

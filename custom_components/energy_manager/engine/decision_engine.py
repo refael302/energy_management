@@ -101,15 +101,18 @@ class DecisionEngine:
             self._charge_state_max_duration_minutes = 0.0
         self._last_charge_state = charge_state
 
-    def decide(self, model: EnergyModel) -> DecisionResult:
+    def decide(
+        self, model: EnergyModel, manual_override: bool | None = None
+    ) -> DecisionResult:
         """
         Compute strategy recommendation and system mode from current model.
-        If manual_override, returns current mode as normal (no auto changes).
+        If manual_override (or self.manual_override when None), returns current mode as normal (no auto changes).
         """
         strategy, reason = recommend_battery_strategy(model)
         model.set_strategy_recommendation(strategy)
 
-        if self.manual_override:
+        use_manual = manual_override if manual_override is not None else self.manual_override
+        if use_manual:
             return DecisionResult(
                 strategy_recommendation=strategy,
                 strategy_reason=reason,

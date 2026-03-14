@@ -498,7 +498,7 @@ class EnergyManagerRecommendedToTurnOffSensor(EnergyManagerSensorBase):
 
 
 class EnergyManagerConsumersOnSensor(EnergyManagerSensorBase):
-    """Number of configured consumer switches/input_booleans that are currently on."""
+    """Number of configured consumer switches/input_booleans that are currently on (displayed as on/total)."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
@@ -507,13 +507,18 @@ class EnergyManagerConsumersOnSensor(EnergyManagerSensorBase):
             "consumers_on_count",
             "Consumers On",
             icon="mdi:counter",
-            state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
 
     @callback
     def _handle_coordinator_update(self) -> None:
         data = self.coordinator.data
-        if data is not None and "consumers_on_count" in data:
-            self._attr_native_value = data.get("consumers_on_count", 0)
+        if data is not None:
+            on_count = data.get("consumers_on_count", 0)
+            total = data.get("consumers_total", 0)
+            self._attr_native_value = f"{on_count}/{total}"
+            self._attr_extra_state_attributes = {
+                "on_count": on_count,
+                "total": total,
+            }
         self.async_write_ha_state()
