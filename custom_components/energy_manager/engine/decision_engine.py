@@ -32,6 +32,7 @@ class DecisionResult:
     strategy_recommendation: str
     strategy_reason: str
     system_mode: str  # saving | normal | wasting
+    mode_reason: str  # short reason why this mode was chosen
 
 
 def recommend_battery_strategy(model: EnergyModel) -> tuple[str, str]:
@@ -106,6 +107,7 @@ class DecisionEngine:
                 strategy_recommendation=strategy,
                 strategy_reason=reason,
                 system_mode=SYSTEM_MODE_NORMAL,
+                mode_reason="Manual override",
             )
 
         battery_status = model.battery_status
@@ -119,6 +121,7 @@ class DecisionEngine:
                 strategy_recommendation=strategy,
                 strategy_reason=reason,
                 system_mode=SYSTEM_MODE_WASTING,
+                mode_reason="Max charging for 5 minutes",
             )
 
         # 2. Very low battery + not max charging → saving (super)
@@ -127,6 +130,7 @@ class DecisionEngine:
                 strategy_recommendation=strategy,
                 strategy_reason=reason,
                 system_mode=SYSTEM_MODE_SAVING,
+                mode_reason="Very low battery",
             )
 
         # 3. Can waste energy → wasting
@@ -135,6 +139,7 @@ class DecisionEngine:
                 strategy_recommendation=strategy,
                 strategy_reason=reason,
                 system_mode=SYSTEM_MODE_WASTING,
+                mode_reason="Can waste energy",
             )
 
         # 4. Low battery + not max charging → saving
@@ -143,6 +148,7 @@ class DecisionEngine:
                 strategy_recommendation=strategy,
                 strategy_reason=reason,
                 system_mode=SYSTEM_MODE_SAVING,
+                mode_reason="Low battery",
             )
 
         # 5. Battery at recommendation level → normal (Off)
@@ -155,6 +161,7 @@ class DecisionEngine:
                 strategy_recommendation=strategy,
                 strategy_reason=reason,
                 system_mode=SYSTEM_MODE_NORMAL,
+                mode_reason="Battery at recommendation level",
             )
 
         # 6. Default: below recommendation → saving
@@ -162,4 +169,5 @@ class DecisionEngine:
             strategy_recommendation=strategy,
             strategy_reason=reason,
             system_mode=SYSTEM_MODE_SAVING,
+            mode_reason="Below recommendation",
         )

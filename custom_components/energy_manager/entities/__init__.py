@@ -1,7 +1,6 @@
 """Energy Manager entities."""
 
 from .sensors import (
-    EnergyManagerAvailablePowerSensor,
     EnergyManagerBatteryReserveStateSensor,
     EnergyManagerDailyMarginSensor,
     EnergyManagerForecastCurrentPowerSensor,
@@ -12,7 +11,6 @@ from .sensors import (
 )
 
 __all__ = [
-    "EnergyManagerAvailablePowerSensor",
     "EnergyManagerBatteryReserveStateSensor",
     "EnergyManagerDailyMarginSensor",
     "EnergyManagerForecastCurrentPowerSensor",

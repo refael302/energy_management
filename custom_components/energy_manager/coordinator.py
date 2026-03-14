@@ -198,6 +198,16 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ) and self.model.daily_margin_kwh < 0:
                 recommended_entity_ids = list(self._recommended_to_turn_off_entity_ids)
 
+            # Count consumers (configured switches/input_booleans) that are on
+            consumer_entity_ids = self._config.get(CONF_CONSUMER_SWITCHES) or []
+            if isinstance(consumer_entity_ids, str):
+                consumer_entity_ids = [consumer_entity_ids]
+            consumers_on_count = 0
+            for eid in consumer_entity_ids:
+                state = self.hass.states.get(eid)
+                if state and state.state == "on":
+                    consumers_on_count += 1
+
             # 7. Expose for sensors
             return {
                 "model": self.model,
@@ -214,9 +224,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "energy_manager_mode": decision.system_mode,
                 "strategy_recommendation": decision.strategy_recommendation,
                 "strategy_reason": decision.strategy_reason,
-                "available_power_kw": self.model.solar_production_kw
-                + self.model.battery_power_kw
-                - self.model.house_consumption_kw,
+                "mode_reason": decision.mode_reason,
                 "forecast_remaining_kwh": forecast.forecast_today_remaining_kwh,
                 "battery_reserve_state": self.model.battery_status,
                 "daily_margin_kwh": self.model.daily_margin_kwh,
@@ -228,6 +236,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "pv_remaining_today_safe_kwh": self.model.pv_remaining_today_safe_kwh,
                 "can_waste_energy": self.model.can_waste_energy,
                 "hours_until_eod": self.model.hours_until_eod,
+                "consumers_on_count": consumers_on_count,
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)

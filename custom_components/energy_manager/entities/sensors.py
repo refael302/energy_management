@@ -1,5 +1,5 @@
 """
-Energy Manager sensors – expose mode, available_power, forecast_remaining, battery_reserve_state, etc.
+Energy Manager sensors – expose mode, forecast_remaining, battery_reserve_state, etc.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             EnergyManagerModeSensor(coordinator, entry),
-            EnergyManagerAvailablePowerSensor(coordinator, entry),
+            EnergyManagerModeReasonSensor(coordinator, entry),
             EnergyManagerBatterySocSensor(coordinator, entry),
             EnergyManagerSolarProductionSensor(coordinator, entry),
             EnergyManagerHouseConsumptionSensor(coordinator, entry),
@@ -56,6 +56,7 @@ async def async_setup_entry(
             EnergyManagerCanTurnOnHeavyConsumerSensor(coordinator, entry),
             EnergyManagerCanWasteEnergySensor(coordinator, entry),
             EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
+            EnergyManagerConsumersOnSensor(coordinator, entry),
         ]
     )
 
@@ -119,20 +120,25 @@ class EnergyManagerModeSensor(EnergyManagerSensorBase):
         self.async_write_ha_state()
 
 
-class EnergyManagerAvailablePowerSensor(EnergyManagerSensorBase):
-    """Available power (solar + battery - house consumption) in kW."""
+class EnergyManagerModeReasonSensor(EnergyManagerSensorBase):
+    """Reason why the current energy mode (saving/normal/wasting) was chosen."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
             coordinator,
             entry,
-            "available_power_kw",
-            "Available Power",
-            icon="mdi:flash",
-            device_class=SensorDeviceClass.POWER,
-            state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfPower.KILO_WATT,
+            "mode_reason",
+            "Mode Reason",
+            icon="mdi:information-outline",
+            entity_category=EntityCategory.DIAGNOSTIC,
         )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("mode_reason", "")
+        self.async_write_ha_state()
 
 
 class EnergyManagerBatterySocSensor(EnergyManagerSensorBase):
@@ -488,4 +494,26 @@ class EnergyManagerRecommendedToTurnOffSensor(EnergyManagerSensorBase):
             entity_ids = data.get("recommended_to_turn_off_entity_ids") or []
         self._attr_native_value = "on" if entity_ids else "off"
         self._attr_extra_state_attributes = {"entity_id": entity_ids}
+        self.async_write_ha_state()
+
+
+class EnergyManagerConsumersOnSensor(EnergyManagerSensorBase):
+    """Number of configured consumer switches/input_booleans that are currently on."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "consumers_on_count",
+            "Consumers On",
+            icon="mdi:counter",
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data is not None and "consumers_on_count" in data:
+            self._attr_native_value = data.get("consumers_on_count", 0)
         self.async_write_ha_state()
