@@ -158,8 +158,14 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             forecast = await self.forecast_engine.fetch_and_compute(
                 self.hass, datetime.now(timezone.utc)
             )
-            self.model.forecast_next_hour_kwh = forecast.forecast_next_hour_kwh
-            self.model.forecast_today_remaining_kwh = forecast.forecast_today_remaining_kwh
+            forecast_available = getattr(forecast, "available", True)
+            self.model.forecast_available = forecast_available
+            if forecast_available:
+                self.model.forecast_next_hour_kwh = forecast.forecast_next_hour_kwh
+                self.model.forecast_today_remaining_kwh = forecast.forecast_today_remaining_kwh
+            else:
+                self.model.forecast_next_hour_kwh = 0.0
+                self.model.forecast_today_remaining_kwh = 0.0
             self.model.hours_until_eod = _hours_until_sunset(self.hass)
 
             # 3. Derived
@@ -192,10 +198,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Recommendation: turn off intermediate devices when battery low and forecast short
             recommended_entity_ids: list[str] = []
-            if self._recommended_to_turn_off_entity_ids and self.model.battery_status in (
-                "low",
-                "very low",
-            ) and self.model.daily_margin_kwh < 0:
+            if (
+                self._recommended_to_turn_off_entity_ids
+                and self.model.battery_status in ("low", "very low")
+                and (not self.model.forecast_available or self.model.daily_margin_kwh < 0)
+            ):
                 recommended_entity_ids = list(self._recommended_to_turn_off_entity_ids)
 
             # Count consumers (configured switches/input_booleans) that are on
@@ -208,32 +215,43 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if state and state.state == "on":
                     consumers_on_count += 1
 
-            # 7. Expose for sensors
+            # 7. Expose for sensors (forecast-related as None when unavailable so sensors show unavailable)
+            if forecast_available:
+                f_next = forecast.forecast_next_hour_kwh
+                f_today = forecast.forecast_today_remaining_kwh
+                f_tomorrow = forecast.forecast_tomorrow_kwh
+                f_current = forecast.forecast_current_power_kw
+                daily_margin = self.model.daily_margin_kwh
+                pv_safe = self.model.pv_remaining_today_safe_kwh
+            else:
+                f_next = f_today = f_tomorrow = f_current = daily_margin = pv_safe = None
+
             return {
                 "model": self.model,
                 "forecast": forecast,
                 "decision": decision,
+                "forecast_available": forecast_available,
                 "battery_soc": soc,
                 "battery_power_kw": self.model.battery_power_kw,
                 "solar_production_kw": self.model.solar_production_kw,
                 "house_consumption_kw": self.model.house_consumption_kw,
-                "forecast_next_hour_kwh": forecast.forecast_next_hour_kwh,
-                "forecast_today_remaining_kwh": forecast.forecast_today_remaining_kwh,
-                "forecast_tomorrow_kwh": forecast.forecast_tomorrow_kwh,
-                "forecast_current_power_kw": forecast.forecast_current_power_kw,
+                "forecast_next_hour_kwh": f_next,
+                "forecast_today_remaining_kwh": f_today,
+                "forecast_tomorrow_kwh": f_tomorrow,
+                "forecast_current_power_kw": f_current,
                 "energy_manager_mode": decision.system_mode,
                 "strategy_recommendation": decision.strategy_recommendation,
                 "strategy_reason": decision.strategy_reason,
                 "mode_reason": decision.mode_reason,
-                "forecast_remaining_kwh": forecast.forecast_today_remaining_kwh,
+                "forecast_remaining_kwh": f_today,
                 "battery_reserve_state": self.model.battery_status,
-                "daily_margin_kwh": self.model.daily_margin_kwh,
+                "daily_margin_kwh": daily_margin,
                 "can_turn_on_heavy_consumer": self.model.can_turn_on_heavy_consumer,
                 "recommended_to_turn_off_entity_ids": recommended_entity_ids,
                 "charge_state": self.model.charge_state,
                 "discharge_state": self.model.discharge_state,
                 "needed_energy_today_kwh": self.model.needed_energy_today_kwh,
-                "pv_remaining_today_safe_kwh": self.model.pv_remaining_today_safe_kwh,
+                "pv_remaining_today_safe_kwh": pv_safe,
                 "can_waste_energy": self.model.can_waste_energy,
                 "hours_until_eod": self.model.hours_until_eod,
                 "consumers_on_count": consumers_on_count,

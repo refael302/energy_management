@@ -43,6 +43,7 @@ class SolarForecast:
     forecast_current_power_kw: float = 0.0
     hourly_poa_per_string: list[list[float]] = field(default_factory=list)
     hourly_power_per_string: list[list[float]] = field(default_factory=list)
+    available: bool = True  # False when fetch failed or data empty
 
 
 def _compute_poa_and_power_sync(
@@ -149,14 +150,14 @@ class ForecastEngine:
                         _LOGGER.warning(
                             "Open-Meteo returned %s for %s", resp.status, url
                         )
-                        return self._last or SolarForecast()
+                        return SolarForecast(available=False)
                     data = await resp.json()
         except asyncio.TimeoutError:
             _LOGGER.warning("Open-Meteo request timeout")
-            return self._last or SolarForecast()
+            return SolarForecast(available=False)
         except Exception as e:
             _LOGGER.warning("Open-Meteo request failed: %s", e)
-            return self._last or SolarForecast()
+            return SolarForecast(available=False)
 
         hourly = data.get("hourly", {})
         times_str = hourly.get("time", [])
@@ -165,7 +166,7 @@ class ForecastEngine:
         dhi = hourly.get("diffuse_radiation", [])
 
         if not times_str or not ghi:
-            return self._last or SolarForecast()
+            return SolarForecast(available=False)
 
         def _parse_time(ts: str) -> datetime:
             if ts.endswith("Z"):
@@ -240,6 +241,7 @@ class ForecastEngine:
             forecast_current_power_kw=round(current_power_kw, 2),
             hourly_poa_per_string=poa_per_string,
             hourly_power_per_string=power_per_string,
+            available=True,
         )
         self._last = result
         return result

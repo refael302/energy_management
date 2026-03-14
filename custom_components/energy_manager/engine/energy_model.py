@@ -33,6 +33,7 @@ class EnergyModel:
     # Forecast inputs (from forecast engine)
     forecast_next_hour_kwh: float = 0.0
     forecast_today_remaining_kwh: float = 0.0
+    forecast_available: bool = True
 
     # Time until end of day (hours)
     hours_until_eod: float = 0.0
@@ -117,14 +118,21 @@ class EnergyModel:
             + self.emergency_reserve_kwh,
             2,
         )
-        self.pv_remaining_today_safe_kwh = round(
-            self.forecast_today_remaining_kwh * self.safety_forecast_factor_percent / 100, 2
-        )
-        self.daily_margin_kwh = round(
-            self.pv_remaining_today_safe_kwh - self.needed_energy_today_kwh, 2
-        )
+        if self.forecast_available:
+            self.pv_remaining_today_safe_kwh = round(
+                self.forecast_today_remaining_kwh * self.safety_forecast_factor_percent / 100, 2
+            )
+            self.daily_margin_kwh = round(
+                self.pv_remaining_today_safe_kwh - self.needed_energy_today_kwh, 2
+            )
+        else:
+            self.pv_remaining_today_safe_kwh = 0.0
+            self.daily_margin_kwh = -1.0  # conservative: assume no PV headroom
 
     def _can_turn_on_heavy_consumer(self) -> None:
+        if not self.forecast_available:
+            self.can_turn_on_heavy_consumer = False
+            return
         soc_energy = self.battery_soc / 100 * self.battery_capacity_kwh
         available = soc_energy + self.forecast_next_hour_kwh - self.house_consumption_kw
         self.can_turn_on_heavy_consumer = (

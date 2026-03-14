@@ -39,7 +39,14 @@ def recommend_battery_strategy(model: EnergyModel) -> tuple[str, str]:
     """
     Replicate script recommend_battery_strategy_v5.
     Returns (strategy_recommendation, strategy_reason).
+    When forecast is unavailable, recommend FULL (conservative) and reason explains we use current state only.
     """
+    if not getattr(model, "forecast_available", True):
+        return (
+            STRATEGY_FULL,
+            "FULL – forecast unavailable, using current state only",
+        )
+
     daily_margin = model.daily_margin_kwh
     consumption_next_hour = model.house_consumption_kw
     pv_next_hour = model.forecast_next_hour_kwh
