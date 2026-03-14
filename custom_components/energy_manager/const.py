@@ -71,6 +71,8 @@ CONF_DISCHARGE_LIMIT_PERCENT = "discharge_limit_percent"
 CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT = "discharge_limit_deadband_percent"
 CONF_BATTERY_CURRENT_SENSOR = "battery_current_sensor"
 CONF_MANUAL_OVERRIDE = "manual_override"
+CONF_MANUAL_MODE = "manual_mode"
+CONF_MANUAL_STRATEGY = "manual_strategy"
 CONF_LIGHTS_TO_TURN_OFF = "lights_to_turn_off"
 CONF_RECOMMENDED_TO_TURN_OFF = "recommended_to_turn_off"
 
