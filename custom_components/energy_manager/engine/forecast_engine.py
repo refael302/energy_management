@@ -61,6 +61,8 @@ def _compute_poa_and_power_sync(
     """
     poa_per_string: list[list[float]] = [[] for _ in strings]
     power_per_string: list[list[float]] = [[] for _ in strings]
+    _logged_solpos_fail = False
+    _logged_poa_fail = False
     for t, g, n, d in zip(times, ghi, dni, dhi):
         if g is None or n is None or d is None:
             g, n, d = 0.0, 0.0, 0.0
@@ -71,7 +73,14 @@ def _compute_poa_and_power_sync(
             solar_zenith = float(solpos["zenith"].iloc[0])
             solar_azimuth = float(solpos["azimuth"].iloc[0])
             dni_extra = float(irradiance.get_extra_radiation(pd.Timestamp(t)))
-        except Exception:
+        except Exception as e:
+            if not _logged_solpos_fail:
+                _LOGGER.warning(
+                    "pvlib solar position failed for hour %s: %s",
+                    t,
+                    e,
+                )
+                _logged_solpos_fail = True
             for s in range(len(strings)):
                 poa_per_string[s].append(0.0)
                 power_per_string[s].append(0.0)
@@ -97,7 +106,15 @@ def _compute_poa_and_power_sync(
                 poa_global = float(poa["poa_global"].iloc[0])
                 if poa_global < 0:
                     poa_global = 0.0
-            except Exception:
+            except Exception as e:
+                if not _logged_poa_fail:
+                    _LOGGER.warning(
+                        "pvlib get_total_irradiance failed (hour %s, string %s): %s",
+                        t,
+                        s,
+                        e,
+                    )
+                    _logged_poa_fail = True
                 poa_global = 0.0
             poa_per_string[s].append(poa_global)
             power_per_string[s].append(
