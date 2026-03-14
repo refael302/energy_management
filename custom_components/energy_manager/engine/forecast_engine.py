@@ -103,7 +103,8 @@ def _compute_poa_and_power_sync(
                     dni_extra=dni_extra,
                     model="haydavies",
                 )
-                poa_global = float(poa["poa_global"].iloc[0])
+                val = poa["poa_global"]
+                poa_global = float(val.iloc[0]) if hasattr(val, "iloc") else float(val)
                 if poa_global < 0:
                     poa_global = 0.0
             except Exception as e:
