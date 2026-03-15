@@ -86,8 +86,7 @@ class DecisionEngine:
     6) Default → saving.
     """
 
-    def __init__(self, manual_override: bool = False) -> None:
-        self.manual_override = manual_override
+    def __init__(self) -> None:
         self._charge_state_max_duration_minutes: float = 0.0
         self._last_charge_state: str = ""
 

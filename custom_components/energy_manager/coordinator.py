@@ -10,7 +10,6 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -88,7 +87,8 @@ def _hours_until_sunset(hass: HomeAssistant) -> float:
         end_ts = dt_util.as_timestamp(next_set)
         now_ts = datetime.now(timezone.utc).timestamp()
         return max(0.0, round((end_ts - now_ts) / 3600, 2))
-    except Exception:
+    except Exception as e:
+        _LOGGER.debug("sun sunset: %s", e)
         return 0.0
 
 
@@ -126,9 +126,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             longitude=float(data.get(CONF_LONGITUDE, 34.78)),
             strings=data.get(CONF_STRINGS, []),
         )
-        self.decision_engine = DecisionEngine(
-            manual_override=bool(data.get("manual_override", False))
-        )
+        self.decision_engine = DecisionEngine()
         consumer_switches = data.get(CONF_CONSUMER_SWITCHES) or []
         if isinstance(consumer_switches, str):
             consumer_switches = [consumer_switches]
@@ -264,6 +262,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 f_next = f_today = f_tomorrow = f_current = daily_margin = pv_safe = None
 
+            _LOGGER.debug(
+                "update ok: mode=%s strategy=%s",
+                decision.system_mode,
+                decision.strategy_recommendation,
+            )
             return {
                 "model": self.model,
                 "forecast": forecast,

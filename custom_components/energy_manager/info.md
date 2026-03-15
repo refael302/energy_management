@@ -6,9 +6,10 @@
 
 - חיישנים: SOC סוללה, הספק סוללה, ייצור סולארי, צריכת בית
 - תחזית סולארית (GHI/DNI/DHI מ-Open-Meteo, POA עם pvlib, תמיכה במספר סטרינגים)
-- מנוע החלטות: מצבים saving / normal / wasting
-- ניהול צרכנים (מתגים) עם השהיה ועדיפויות
+- מנוע החלטות: מצבים saving / normal / wasting / emergency_saving (סוללה נמוכה מאוד)
+- ניהול צרכנים (מתגים) עם השהיה ועדיפויות; כיבוי בדירוג (צרכן אחד כל delay) ביציאה מ־wasting ל־normal
 - חיישנים: מצב, הספק זמין, תחזית נשארת, מצב רזרבה סוללה ועוד
+- לבדיקות: מתגי Manual Mode Override ו־Manual Strategy Override, ובחירת ערך ב־Select (Manual Mode / Manual Strategy) כשהמתג המתאים דלוק
 
 ## התקנה
 
