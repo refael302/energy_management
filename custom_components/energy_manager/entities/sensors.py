@@ -49,12 +49,14 @@ async def async_setup_entry(
             EnergyManagerNeededEnergyTodaySensor(coordinator, entry),
             EnergyManagerPvRemainingSafeSensor(coordinator, entry),
             EnergyManagerHoursUntilEodSensor(coordinator, entry),
+            EnergyManagerHoursUntilSunriseSensor(coordinator, entry),
             EnergyManagerStrategyRecommendationSensor(coordinator, entry),
             EnergyManagerStrategyReasonSensor(coordinator, entry),
             EnergyManagerChargeStateSensor(coordinator, entry),
             EnergyManagerDischargeStateSensor(coordinator, entry),
             EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
             EnergyManagerConsumersOnSensor(coordinator, entry),
+            EnergyManagerBatteryRuntimeSensor(coordinator, entry),
         ]
     )
 
@@ -343,6 +345,21 @@ class EnergyManagerHoursUntilEodSensor(EnergyManagerSensorBase):
         )
 
 
+class EnergyManagerHoursUntilSunriseSensor(EnergyManagerSensorBase):
+    """Hours until next sunrise."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "hours_until_sunrise",
+            "Hours Until Sunrise",
+            icon="mdi:weather-sunset-up",
+            state_class=SensorStateClass.MEASUREMENT,
+            unit="h",
+        )
+
+
 class EnergyManagerStrategyRecommendationSensor(EnergyManagerSensorBase):
     """Strategy level: low / medium / high / full."""
 
@@ -475,4 +492,25 @@ class EnergyManagerConsumersOnSensor(EnergyManagerSensorBase):
                 "on_count": on_count,
                 "total": total,
             }
+        self.async_write_ha_state()
+
+
+class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
+    """Battery runtime until 10% SOC at current consumption (HH:MM)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "battery_runtime_hhmm",
+            "Battery Runtime",
+            icon="mdi:battery-clock",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data is not None:
+            self._attr_native_value = data.get("battery_runtime_hhmm", "99:59")
         self.async_write_ha_state()

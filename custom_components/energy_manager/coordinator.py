@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    BATTERY_RUNTIME_MIN_SOC_PERCENT,
     CONF_BASELINE_CONSUMPTION,
     STRATEGY_MEDIUM,
     SYSTEM_MODE_NORMAL,
@@ -26,6 +27,7 @@ from .const import (
     CONF_DISCHARGE_LIMIT_PERCENT,
     CONF_EOD_BATTERY_TARGET,
     CONF_HOUSE_CONSUMPTION_SENSOR,
+    CONF_INVERTER_SIZE_KW,
     CONF_LATITUDE,
     CONF_LIGHTS_TO_TURN_OFF,
     CONF_MANUAL_MODE,
@@ -40,10 +42,13 @@ from .const import (
     CONF_SAFETY_FORECAST_FACTOR,
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_STRINGS,
+    DEFAULT_INVERTER_SIZE_KW,
     DOMAIN,
+    FORECAST_STRATEGY_CACHE_MINUTES,
     UPDATE_INTERVAL,
 )
 from .engine import DecisionEngine, EnergyModel, ForecastEngine, LoadManager
+from .engine.decision_engine import recommend_battery_strategy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,6 +94,23 @@ def _hours_until_sunset(hass: HomeAssistant) -> float:
         return max(0.0, round((end_ts - now_ts) / 3600, 2))
     except Exception as e:
         _LOGGER.debug("sun sunset: %s", e)
+        return 0.0
+
+
+def _hours_until_sunrise(hass: HomeAssistant) -> float:
+    sun = hass.states.get("sun.sun")
+    if sun is None:
+        return 0.0
+    next_rise = sun.attributes.get("next_rising")
+    if next_rise is None:
+        return 0.0
+    try:
+        from homeassistant.util import dt as dt_util
+        rise_ts = dt_util.as_timestamp(next_rise)
+        now_ts = datetime.now(timezone.utc).timestamp()
+        return max(0.0, round((rise_ts - now_ts) / 3600, 2))
+    except Exception as e:
+        _LOGGER.debug("sun sunrise: %s", e)
         return 0.0
 
 
@@ -155,6 +177,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
         self._prev_discharge_state: str = ""
         self._last_decision: Any = None
+        self._last_forecast: Any = None
+        self._last_forecast_time: datetime | None = None
+        self._last_strategy: str | None = None
+        self._last_strategy_reason: str = ""
+        self._last_strategy_time: datetime | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch sensors, forecast, update model, run decision, apply load manager."""
@@ -175,15 +202,35 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.model.solar_production_kw = solar_w / 1000.0
             self.model.house_consumption_kw = house_w / 1000.0
             self.model.battery_current = battery_current if battery_current != 0.0 else None
+            current_config = {**self.entry.data, **(self.entry.options or {})}
 
-            # 2. Forecast
-            forecast = await self.forecast_engine.fetch_and_compute(
-                self.hass, datetime.now(timezone.utc)
-            )
+            # 2. Forecast (cached every FORECAST_STRATEGY_CACHE_MINUTES)
+            now_utc = datetime.now(timezone.utc)
+            cache_min = timedelta(minutes=FORECAST_STRATEGY_CACHE_MINUTES)
+            if (
+                self._last_forecast is None
+                or self._last_forecast_time is None
+                or (now_utc - self._last_forecast_time) >= cache_min
+            ):
+                forecast = await self.forecast_engine.fetch_and_compute(
+                    self.hass, now_utc
+                )
+                self._last_forecast = forecast
+                self._last_forecast_time = now_utc
+            else:
+                forecast = self._last_forecast
             forecast_available = getattr(forecast, "available", True)
             self.model.forecast_available = forecast_available
+            inverter_size_kw = float(
+                current_config.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW) or 0
+            )
             if forecast_available:
-                self.model.forecast_next_hour_kwh = forecast.forecast_next_hour_kwh
+                f_next = forecast.forecast_next_hour_kwh
+                f_power = getattr(forecast, "forecast_current_power_kw", 0.0) or 0.0
+                if inverter_size_kw > 0:
+                    f_next = min(f_next, inverter_size_kw)
+                    f_power = min(f_power, inverter_size_kw)
+                self.model.forecast_next_hour_kwh = f_next
                 self.model.forecast_today_remaining_kwh = forecast.forecast_today_remaining_kwh
             else:
                 self.model.forecast_next_hour_kwh = 0.0
@@ -197,17 +244,30 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.decision_engine.update_charge_state_duration(
                 self.model.charge_state, UPDATE_INTERVAL / 60.0
             )
-            current_config = {**self.entry.data, **(self.entry.options or {})}
             manual_mode_override = bool(current_config.get(CONF_MANUAL_MODE_OVERRIDE, current_config.get(CONF_MANUAL_OVERRIDE, False)))
             manual_strategy_override = bool(current_config.get(CONF_MANUAL_STRATEGY_OVERRIDE, current_config.get(CONF_MANUAL_OVERRIDE, False)))
             manual_mode = current_config.get(CONF_MANUAL_MODE) or SYSTEM_MODE_NORMAL
             manual_strategy = current_config.get(CONF_MANUAL_STRATEGY) or STRATEGY_MEDIUM
+            if (
+                self._last_strategy_time is None
+                or (now_utc - self._last_strategy_time) >= cache_min
+            ):
+                self._last_strategy, self._last_strategy_reason = recommend_battery_strategy(
+                    self.model
+                )
+                self._last_strategy_time = now_utc
+            cached_strategy = (
+                (self._last_strategy, self._last_strategy_reason)
+                if self._last_strategy is not None
+                else None
+            )
             decision = self.decision_engine.decide(
                 self.model,
                 manual_mode_override=manual_mode_override,
                 manual_strategy_override=manual_strategy_override,
                 manual_mode=manual_mode,
                 manual_strategy=manual_strategy,
+                cached_strategy=cached_strategy,
             )
             self._last_decision = decision
 
@@ -256,11 +316,29 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f_next = forecast.forecast_next_hour_kwh
                 f_today = forecast.forecast_today_remaining_kwh
                 f_tomorrow = forecast.forecast_tomorrow_kwh
-                f_current = forecast.forecast_current_power_kw
+                f_current = getattr(forecast, "forecast_current_power_kw", None) or 0.0
+                if inverter_size_kw > 0:
+                    f_next = min(f_next, inverter_size_kw)
+                    f_current = min(f_current, inverter_size_kw)
                 daily_margin = self.model.daily_margin_kwh
                 pv_safe = self.model.pv_remaining_today_safe_kwh
             else:
                 f_next = f_today = f_tomorrow = f_current = daily_margin = pv_safe = None
+
+            hours_until_sunrise = _hours_until_sunrise(self.hass)
+            usable_kwh = max(
+                0.0,
+                (soc - BATTERY_RUNTIME_MIN_SOC_PERCENT) / 100.0
+                * self.model.battery_capacity_kwh,
+            )
+            house_kw = self.model.house_consumption_kw
+            if house_kw is None or house_kw <= 0:
+                battery_runtime_hhmm = "99:59"
+            else:
+                runtime_hours = usable_kwh / house_kw
+                h = min(99, int(runtime_hours))
+                m = int((runtime_hours % 1) * 60)
+                battery_runtime_hhmm = f"{h:02d}:{m:02d}"
 
             _LOGGER.debug(
                 "update ok: mode=%s strategy=%s",
@@ -293,6 +371,8 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "needed_energy_today_kwh": self.model.needed_energy_today_kwh,
                 "pv_remaining_today_safe_kwh": pv_safe,
                 "hours_until_eod": self.model.hours_until_eod,
+                "hours_until_sunrise": hours_until_sunrise,
+                "battery_runtime_hhmm": battery_runtime_hhmm,
                 "consumers_on_count": consumers_on_count,
                 "consumers_total": consumers_total,
             }

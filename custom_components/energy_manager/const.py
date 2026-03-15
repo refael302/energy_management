@@ -5,6 +5,8 @@ NAME = "Energy Manager"
 
 # Update interval for coordinator (seconds)
 UPDATE_INTERVAL = 30
+# Forecast and strategy cache (minutes) – fetch/update every 15 min, use cache between
+FORECAST_STRATEGY_CACHE_MINUTES = 15
 
 # Battery strategy levels (same as YAML: low, medium, high, full)
 STRATEGY_LOW = "low"
@@ -78,6 +80,7 @@ CONF_MANUAL_MODE = "manual_mode"
 CONF_MANUAL_STRATEGY = "manual_strategy"
 CONF_LIGHTS_TO_TURN_OFF = "lights_to_turn_off"
 CONF_RECOMMENDED_TO_TURN_OFF = "recommended_to_turn_off"
+CONF_INVERTER_SIZE_KW = "inverter_size_kw"
 
 # Defaults (from YAML initial values)
 DEFAULT_BATTERY_CAPACITY = 20.0
@@ -89,6 +92,10 @@ DEFAULT_EOD_BATTERY_TARGET = 90
 DEFAULT_MAX_BATTERY_CURRENT_AMPS = 36
 DEFAULT_DISCHARGE_LIMIT_PERCENT = 80
 DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT = 5
+DEFAULT_INVERTER_SIZE_KW = 0  # 0 = no cap
+
+# Runtime sensor: battery usable down to this SOC %
+BATTERY_RUNTIME_MIN_SOC_PERCENT = 10
 
 # Max strings (phase 1: 2)
 MAX_STRINGS = 2

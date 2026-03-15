@@ -25,6 +25,7 @@ from .const import (
     CONF_DISCHARGE_LIMIT_PERCENT,
     CONF_EOD_BATTERY_TARGET,
     CONF_HOUSE_CONSUMPTION_SENSOR,
+    CONF_INVERTER_SIZE_KW,
     CONF_LIGHTS_TO_TURN_OFF,
     CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_MAX_BATTERY_CURRENT_AMPS,
@@ -40,6 +41,7 @@ from .const import (
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     DEFAULT_DISCHARGE_LIMIT_PERCENT,
     DEFAULT_EOD_BATTERY_TARGET,
+    DEFAULT_INVERTER_SIZE_KW,
     DEFAULT_MAX_BATTERY_CURRENT_AMPS,
     DEFAULT_MINIMUM_BATTERY_RESERVE,
     DEFAULT_SAFETY_FORECAST_FACTOR,
@@ -99,6 +101,9 @@ def _data_schema_user(hass: HomeAssistant) -> vol.Schema:
             vol.Required(
                 CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, default=5
             ): vol.Coerce(int),
+            vol.Optional(
+                CONF_INVERTER_SIZE_KW, default=DEFAULT_INVERTER_SIZE_KW
+            ): vol.Coerce(float),
             vol.Optional(CONF_BATTERY_CURRENT_SENSOR): _sensor_selector(),
             vol.Optional(CONF_LIGHTS_TO_TURN_OFF): selector.EntitySelector(
                 selector.EntityFilterSelectorConfig(
@@ -272,6 +277,10 @@ def _options_schema_main(hass: HomeAssistant, merged: dict[str, Any]) -> vol.Sch
                     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
                 ),
             ): vol.Coerce(int),
+            vol.Optional(
+                CONF_INVERTER_SIZE_KW,
+                default=merged.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW),
+            ): vol.Coerce(float),
             vol.Optional(
                 CONF_BATTERY_CURRENT_SENSOR,
                 default=merged.get(CONF_BATTERY_CURRENT_SENSOR) or "",

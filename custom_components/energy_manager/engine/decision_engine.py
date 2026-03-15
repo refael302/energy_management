@@ -108,13 +108,17 @@ class DecisionEngine:
         manual_strategy_override: bool = False,
         manual_mode: str | None = None,
         manual_strategy: str | None = None,
+        cached_strategy: tuple[str, str] | None = None,
     ) -> DecisionResult:
         """
         Compute strategy recommendation and system mode from current model.
-        manual_strategy_override: use manual_strategy select; else use recommend_battery_strategy.
-        manual_mode_override: use manual_mode select; else compute mode from strategy + conditions.
+        manual_strategy_override: use manual_strategy select; else use recommend_battery_strategy or cached_strategy.
+        cached_strategy: when provided (strategy, reason), use instead of calling recommend_battery_strategy.
         """
-        strategy, reason = recommend_battery_strategy(model)
+        if cached_strategy is not None:
+            strategy, reason = cached_strategy[0], cached_strategy[1]
+        else:
+            strategy, reason = recommend_battery_strategy(model)
         if manual_strategy_override and manual_strategy in (STRATEGY_LOW, STRATEGY_MEDIUM, STRATEGY_HIGH, STRATEGY_FULL):
             strat = manual_strategy
             strategy_reason = "Manual strategy"
