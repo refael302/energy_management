@@ -49,14 +49,12 @@ class EnergyModel:
     needed_energy_today_kwh: float = 0.0
     pv_remaining_today_safe_kwh: float = 0.0
     daily_margin_kwh: float = 0.0
-    can_turn_on_heavy_consumer: bool = False
 
     def update_derived(self) -> None:
         """Update all derived fields from current raw and config values."""
         self._battery_status()
         self._charge_discharge_states()
         self._consumption_and_headroom()
-        self._can_turn_on_heavy_consumer()
 
     def _battery_status(self) -> None:
         if self.battery_soc < 15:
@@ -126,16 +124,6 @@ class EnergyModel:
         else:
             self.pv_remaining_today_safe_kwh = 0.0
             self.daily_margin_kwh = -1.0  # conservative: assume no PV headroom
-
-    def _can_turn_on_heavy_consumer(self) -> None:
-        if not self.forecast_available:
-            self.can_turn_on_heavy_consumer = False
-            return
-        soc_energy = self.battery_soc / 100 * self.battery_capacity_kwh
-        available = soc_energy + self.forecast_next_hour_kwh - self.house_consumption_kw
-        self.can_turn_on_heavy_consumer = (
-            self.daily_margin_kwh > 0 and available > 0
-        )
 
     battery_strategy_recommendation: str = "full"
 

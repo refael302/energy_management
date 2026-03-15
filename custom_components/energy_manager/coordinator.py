@@ -30,8 +30,10 @@ from .const import (
     CONF_LATITUDE,
     CONF_LIGHTS_TO_TURN_OFF,
     CONF_MANUAL_MODE,
+    CONF_MANUAL_MODE_OVERRIDE,
     CONF_MANUAL_OVERRIDE,
     CONF_MANUAL_STRATEGY,
+    CONF_MANUAL_STRATEGY_OVERRIDE,
     CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_LONGITUDE,
     CONF_MAX_BATTERY_CURRENT_AMPS,
@@ -198,14 +200,16 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.model.charge_state, UPDATE_INTERVAL / 60.0
             )
             current_config = {**self.entry.data, **(self.entry.options or {})}
-            manual_override = bool(current_config.get(CONF_MANUAL_OVERRIDE, False))
+            manual_mode_override = bool(current_config.get(CONF_MANUAL_MODE_OVERRIDE, current_config.get(CONF_MANUAL_OVERRIDE, False)))
+            manual_strategy_override = bool(current_config.get(CONF_MANUAL_STRATEGY_OVERRIDE, current_config.get(CONF_MANUAL_OVERRIDE, False)))
             manual_mode = current_config.get(CONF_MANUAL_MODE) or SYSTEM_MODE_NORMAL
             manual_strategy = current_config.get(CONF_MANUAL_STRATEGY) or STRATEGY_MEDIUM
             decision = self.decision_engine.decide(
                 self.model,
-                manual_override=manual_override,
-                manual_mode=manual_mode if manual_override else None,
-                manual_strategy=manual_strategy if manual_override else None,
+                manual_mode_override=manual_mode_override,
+                manual_strategy_override=manual_strategy_override,
+                manual_mode=manual_mode,
+                manual_strategy=manual_strategy,
             )
             self._last_decision = decision
 
@@ -280,7 +284,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "forecast_remaining_kwh": f_today,
                 "battery_reserve_state": self.model.battery_status,
                 "daily_margin_kwh": daily_margin,
-                "can_turn_on_heavy_consumer": self.model.can_turn_on_heavy_consumer,
                 "recommended_to_turn_off_entity_ids": recommended_entity_ids,
                 "charge_state": self.model.charge_state,
                 "discharge_state": self.model.discharge_state,

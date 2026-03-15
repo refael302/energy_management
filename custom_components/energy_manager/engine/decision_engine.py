@@ -105,31 +105,36 @@ class DecisionEngine:
     def decide(
         self,
         model: EnergyModel,
-        manual_override: bool | None = None,
+        manual_mode_override: bool = False,
+        manual_strategy_override: bool = False,
         manual_mode: str | None = None,
         manual_strategy: str | None = None,
     ) -> DecisionResult:
         """
         Compute strategy recommendation and system mode from current model.
-        If manual_override, returns manual_mode/manual_strategy (or defaults) for testing.
+        manual_strategy_override: use manual_strategy select; else use recommend_battery_strategy.
+        manual_mode_override: use manual_mode select; else compute mode from strategy + conditions.
         """
         strategy, reason = recommend_battery_strategy(model)
-        model.set_strategy_recommendation(strategy)
+        if manual_strategy_override and manual_strategy in (STRATEGY_LOW, STRATEGY_MEDIUM, STRATEGY_HIGH, STRATEGY_FULL):
+            strat = manual_strategy
+            strategy_reason = "Manual strategy"
+        else:
+            strat = strategy
+            strategy_reason = reason
+        model.set_strategy_recommendation(strat)
 
-        use_manual = manual_override if manual_override is not None else self.manual_override
-        if use_manual:
-            mode = manual_mode if manual_mode in (SYSTEM_MODE_SAVING, SYSTEM_MODE_NORMAL, SYSTEM_MODE_WASTING, SYSTEM_MODE_EMERGENCY_SAVING) else SYSTEM_MODE_NORMAL
-            strat = manual_strategy if manual_strategy in (STRATEGY_LOW, STRATEGY_MEDIUM, STRATEGY_HIGH, STRATEGY_FULL) else strategy
+        if manual_mode_override and manual_mode in (SYSTEM_MODE_SAVING, SYSTEM_MODE_NORMAL, SYSTEM_MODE_WASTING, SYSTEM_MODE_EMERGENCY_SAVING):
             return DecisionResult(
                 strategy_recommendation=strat,
-                strategy_reason="Manual override",
-                system_mode=mode,
-                mode_reason="Manual override",
+                strategy_reason=strategy_reason,
+                system_mode=manual_mode,
+                mode_reason="Manual mode",
             )
 
         battery_status = model.battery_status
         charging_state = model.charge_state
-        rec = strategy
+        rec = strat
         levels = {"very low": 0, "low": 1, "medium": 2, "high": 3, "full": 4}
         min_level = {"low": 1, "medium": 2, "high": 3, "full": 4}
         cur = levels.get(battery_status, 0)
@@ -138,8 +143,8 @@ class DecisionEngine:
         # 1. Max charging for 5 min → wasting
         if charging_state == "max" and self._charge_state_max_duration_minutes >= 5:
             return DecisionResult(
-                strategy_recommendation=strategy,
-                strategy_reason=reason,
+                strategy_recommendation=strat,
+                strategy_reason=strategy_reason,
                 system_mode=SYSTEM_MODE_WASTING,
                 mode_reason="Max charging for 5 minutes",
             )
@@ -147,8 +152,8 @@ class DecisionEngine:
         # 2. Very low battery + not max charging → emergency_saving
         if battery_status == "very low" and charging_state != "max":
             return DecisionResult(
-                strategy_recommendation=strategy,
-                strategy_reason=reason,
+                strategy_recommendation=strat,
+                strategy_reason=strategy_reason,
                 system_mode=SYSTEM_MODE_EMERGENCY_SAVING,
                 mode_reason="Very low battery",
             )
@@ -156,8 +161,8 @@ class DecisionEngine:
         # 3. Battery above strategy level → wasting
         if cur > req:
             return DecisionResult(
-                strategy_recommendation=strategy,
-                strategy_reason=reason,
+                strategy_recommendation=strat,
+                strategy_reason=strategy_reason,
                 system_mode=SYSTEM_MODE_WASTING,
                 mode_reason="Can waste energy",
             )
@@ -165,8 +170,8 @@ class DecisionEngine:
         # 4. Low battery + not max charging → saving
         if battery_status == "low" and charging_state != "max":
             return DecisionResult(
-                strategy_recommendation=strategy,
-                strategy_reason=reason,
+                strategy_recommendation=strat,
+                strategy_reason=strategy_reason,
                 system_mode=SYSTEM_MODE_SAVING,
                 mode_reason="Low battery",
             )
@@ -174,16 +179,16 @@ class DecisionEngine:
         # 5. Battery at recommendation level → normal (Off)
         if cur == req:
             return DecisionResult(
-                strategy_recommendation=strategy,
-                strategy_reason=reason,
+                strategy_recommendation=strat,
+                strategy_reason=strategy_reason,
                 system_mode=SYSTEM_MODE_NORMAL,
                 mode_reason="Battery at recommendation level",
             )
 
         # 6. Default: below recommendation → saving
         return DecisionResult(
-            strategy_recommendation=strategy,
-            strategy_reason=reason,
+            strategy_recommendation=strat,
+            strategy_reason=strategy_reason,
             system_mode=SYSTEM_MODE_SAVING,
             mode_reason="Below recommendation",
         )
