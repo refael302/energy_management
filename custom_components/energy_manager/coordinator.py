@@ -17,6 +17,7 @@ from .const import (
     CONF_BASELINE_CONSUMPTION,
     STRATEGY_MEDIUM,
     SYSTEM_MODE_NORMAL,
+    SYSTEM_MODE_WASTING,
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
@@ -209,11 +210,10 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._last_decision = decision
 
-            # 5. Load manager actions
+            # 5. Load manager actions (act only on mode; no extra input gates)
             super_saving = self.model.battery_status == "very low"
             await self.load_manager.apply_mode(
                 decision.system_mode,
-                self.model.can_turn_on_heavy_consumer,
                 super_saving=super_saving,
             )
 
@@ -287,7 +287,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "discharge_state": self.model.discharge_state,
                 "needed_energy_today_kwh": self.model.needed_energy_today_kwh,
                 "pv_remaining_today_safe_kwh": pv_safe,
-                "can_waste_energy": self.model.can_waste_energy,
+                "can_waste_energy": decision.system_mode == SYSTEM_MODE_WASTING,
                 "hours_until_eod": self.model.hours_until_eod,
                 "consumers_on_count": consumers_on_count,
                 "consumers_total": consumers_total,

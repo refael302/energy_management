@@ -128,8 +128,11 @@ class DecisionEngine:
 
         battery_status = model.battery_status
         charging_state = model.charge_state
-        can_waste = model.can_waste_energy
         rec = strategy
+        levels = {"very low": 0, "low": 1, "medium": 2, "high": 3, "full": 4}
+        min_level = {"low": 1, "medium": 2, "high": 3, "full": 4}
+        cur = levels.get(battery_status, 0)
+        req = min_level.get(rec, 4)
 
         # 1. Max charging for 5 min → wasting
         if charging_state == "max" and self._charge_state_max_duration_minutes >= 5:
@@ -149,8 +152,8 @@ class DecisionEngine:
                 mode_reason="Very low battery",
             )
 
-        # 3. Can waste energy → wasting
-        if can_waste:
+        # 3. Battery above strategy level → wasting
+        if cur > req:
             return DecisionResult(
                 strategy_recommendation=strategy,
                 strategy_reason=reason,
@@ -168,10 +171,6 @@ class DecisionEngine:
             )
 
         # 5. Battery at recommendation level → normal (Off)
-        levels = {"very low": 0, "low": 1, "medium": 2, "high": 3, "full": 4}
-        min_level = {"low": 1, "medium": 2, "high": 3, "full": 4}
-        cur = levels.get(battery_status, 0)
-        req = min_level.get(rec, 4)
         if cur == req:
             return DecisionResult(
                 strategy_recommendation=strategy,

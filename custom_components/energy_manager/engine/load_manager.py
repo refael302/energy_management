@@ -33,8 +33,8 @@ class LoadManagerState:
 
 class LoadManager:
     """
-    Applies actions based on system_mode and can_turn_on_heavy_consumer.
-    - wasting: turn on one consumer per delay_minutes when can_turn_on_heavy_consumer.
+    Applies actions based on system_mode only (no extra input gates).
+    - wasting: turn on one consumer per delay_minutes.
     - normal (Off): turn off only those that were turned on by wasting.
     - saving: turn off all consumer switches (and optionally lights).
     Discharge over limit: when discharge_state becomes max, turn off one consumer (reverse order).
@@ -65,7 +65,6 @@ class LoadManager:
     async def apply_mode(
         self,
         system_mode: str,
-        can_turn_on_heavy_consumer: bool,
         super_saving: bool = False,
     ) -> None:
         """
@@ -74,7 +73,7 @@ class LoadManager:
         """
         consumers = self._consumer_entity_ids(self.consumer_entity_ids)
         if system_mode == SYSTEM_MODE_WASTING:
-            await self._apply_wasting_once(consumers, can_turn_on_heavy_consumer)
+            await self._apply_wasting_once(consumers)
         elif system_mode == SYSTEM_MODE_SAVING:
             await self._apply_saving(consumers, super_saving)
         else:
@@ -152,14 +151,12 @@ class LoadManager:
         elapsed = (datetime.now(timezone.utc) - self._last_turn_on_time).total_seconds()
         return elapsed >= self.delay_minutes * 60
 
-    async def _apply_wasting_once(
-        self, consumers: list[str], can_turn_on_heavy_consumer: bool
-    ) -> None:
+    async def _apply_wasting_once(self, consumers: list[str]) -> None:
         """
-        If can_turn_on_heavy_consumer and delay elapsed, turn on the first consumer that is off.
+        When delay elapsed, turn on the first consumer that is off.
         Called periodically by coordinator; one consumer per delay_minutes.
         """
-        if not can_turn_on_heavy_consumer or not consumers or not self._can_turn_on_another():
+        if not consumers or not self._can_turn_on_another():
             return
         for entity_id in consumers:
             state = self.hass.states.get(entity_id)

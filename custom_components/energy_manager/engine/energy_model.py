@@ -50,7 +50,6 @@ class EnergyModel:
     pv_remaining_today_safe_kwh: float = 0.0
     daily_margin_kwh: float = 0.0
     can_turn_on_heavy_consumer: bool = False
-    can_waste_energy: bool = False
 
     def update_derived(self) -> None:
         """Update all derived fields from current raw and config values."""
@@ -58,7 +57,6 @@ class EnergyModel:
         self._charge_discharge_states()
         self._consumption_and_headroom()
         self._can_turn_on_heavy_consumer()
-        self._can_waste_energy()
 
     def _battery_status(self) -> None:
         if self.battery_soc < 15:
@@ -139,16 +137,8 @@ class EnergyModel:
             self.daily_margin_kwh > 0 and available > 0
         )
 
-    def _can_waste_energy(self) -> None:
-        levels = {"very low": 0, "low": 1, "medium": 2, "high": 3, "full": 4}
-        min_level = {"low": 1, "medium": 2, "high": 3, "full": 4}
-        cur = levels.get(self.battery_status, 0)
-        req = min_level.get(self.battery_strategy_recommendation, 4)
-        self.can_waste_energy = cur > req
-
     battery_strategy_recommendation: str = "full"
 
     def set_strategy_recommendation(self, rec: str) -> None:
-        """Set strategy (from decision engine) and recompute can_waste_energy."""
+        """Set strategy (from decision engine)."""
         self.battery_strategy_recommendation = rec
-        self._can_waste_energy()
