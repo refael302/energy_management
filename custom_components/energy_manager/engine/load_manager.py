@@ -13,7 +13,11 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from ..const import SYSTEM_MODE_SAVING, SYSTEM_MODE_WASTING
+from ..const import (
+    SYSTEM_MODE_EMERGENCY_SAVING,
+    SYSTEM_MODE_SAVING,
+    SYSTEM_MODE_WASTING,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,8 +39,9 @@ class LoadManager:
     """
     Applies actions based on system_mode only (no extra input gates).
     - wasting: turn on one consumer per delay_minutes.
-    - normal (Off): turn off only those that were turned on by wasting.
-    - saving: turn off all consumer switches (and optionally lights).
+    - normal (Off): turn off one consumer per delay_minutes (LIFO, those turned on by wasting).
+    - saving: turn off all consumer switches (and optionally lights when super_saving).
+    - emergency_saving: like saving with super_saving (all consumers + lights).
     Discharge over limit: when discharge_state becomes max, turn off one consumer (reverse order).
     """
 
@@ -53,6 +58,7 @@ class LoadManager:
         self.delay_minutes = delay_minutes
         self.state = LoadManagerState()
         self._last_turn_on_time: datetime | None = None
+        self._last_turn_off_time: datetime | None = None
 
     def _consumer_entity_ids(self, entity_ids: list[str]) -> list[str]:
         """Return only switch/input_boolean entities (consumers we can turn on/off)."""
@@ -74,10 +80,12 @@ class LoadManager:
         consumers = self._consumer_entity_ids(self.consumer_entity_ids)
         if system_mode == SYSTEM_MODE_WASTING:
             await self._apply_wasting_once(consumers)
+        elif system_mode == SYSTEM_MODE_EMERGENCY_SAVING:
+            await self._apply_saving(consumers, super_saving=True)
         elif system_mode == SYSTEM_MODE_SAVING:
             await self._apply_saving(consumers, super_saving)
         else:
-            await self._apply_off(consumers)
+            await self._apply_off_once()
 
     def _domain(self, entity_id: str) -> str | None:
         """Return entity domain if it is a supported consumer, else None."""
@@ -96,17 +104,27 @@ class LoadManager:
                 domain, "turn_off", {"entity_id": eids}, blocking=True
             )
 
-    async def _apply_off(self, consumers: list[str]) -> None:
-        """Turn off only consumers that were turned on by wasting."""
-        to_turn_off = [
+    def _can_turn_off_another(self) -> bool:
+        """True if at least delay_minutes have passed since last turn_off (for normal mode)."""
+        if self._last_turn_off_time is None:
+            return True
+        elapsed = (datetime.now(timezone.utc) - self._last_turn_off_time).total_seconds()
+        return elapsed >= self.delay_minutes * 60
+
+    async def _apply_off_once(self) -> None:
+        """Turn off one consumer that was turned on by wasting (LIFO), per delay_minutes."""
+        to_consider = [
             eid
             for eid in self.state.consumers_turned_on_by_wasting
             if self._domain(eid)
         ]
-        if to_turn_off:
-            await self._call_turn_off(to_turn_off)
-            _LOGGER.debug("Turned off (wasting list): %s", to_turn_off)
-        self.state.consumers_turned_on_by_wasting.clear()
+        if not to_consider or not self._can_turn_off_another():
+            return
+        entity_id = to_consider[-1]
+        self.state.consumers_turned_on_by_wasting.remove(entity_id)
+        await self._call_turn_off([entity_id])
+        self._last_turn_off_time = datetime.now(timezone.utc)
+        _LOGGER.debug("Turned off (wasting list, one): %s", entity_id)
 
     def _super_saving_entity_ids(self, entity_ids: list[str]) -> list[str]:
         """Return only entities in domains we can turn off in super-saving."""

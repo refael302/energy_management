@@ -16,6 +16,7 @@ from ..const import (
     STRATEGY_HIGH,
     STRATEGY_LOW,
     STRATEGY_MEDIUM,
+    SYSTEM_MODE_EMERGENCY_SAVING,
     SYSTEM_MODE_NORMAL,
     SYSTEM_MODE_SAVING,
     SYSTEM_MODE_WASTING,
@@ -117,7 +118,7 @@ class DecisionEngine:
 
         use_manual = manual_override if manual_override is not None else self.manual_override
         if use_manual:
-            mode = manual_mode if manual_mode in (SYSTEM_MODE_SAVING, SYSTEM_MODE_NORMAL, SYSTEM_MODE_WASTING) else SYSTEM_MODE_NORMAL
+            mode = manual_mode if manual_mode in (SYSTEM_MODE_SAVING, SYSTEM_MODE_NORMAL, SYSTEM_MODE_WASTING, SYSTEM_MODE_EMERGENCY_SAVING) else SYSTEM_MODE_NORMAL
             strat = manual_strategy if manual_strategy in (STRATEGY_LOW, STRATEGY_MEDIUM, STRATEGY_HIGH, STRATEGY_FULL) else strategy
             return DecisionResult(
                 strategy_recommendation=strat,
@@ -143,12 +144,12 @@ class DecisionEngine:
                 mode_reason="Max charging for 5 minutes",
             )
 
-        # 2. Very low battery + not max charging → saving (super)
+        # 2. Very low battery + not max charging → emergency_saving
         if battery_status == "very low" and charging_state != "max":
             return DecisionResult(
                 strategy_recommendation=strategy,
                 strategy_reason=reason,
-                system_mode=SYSTEM_MODE_SAVING,
+                system_mode=SYSTEM_MODE_EMERGENCY_SAVING,
                 mode_reason="Very low battery",
             )
 

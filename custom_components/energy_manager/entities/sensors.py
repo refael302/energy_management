@@ -54,7 +54,6 @@ async def async_setup_entry(
             EnergyManagerChargeStateSensor(coordinator, entry),
             EnergyManagerDischargeStateSensor(coordinator, entry),
             EnergyManagerCanTurnOnHeavyConsumerSensor(coordinator, entry),
-            EnergyManagerCanWasteEnergySensor(coordinator, entry),
             EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
             EnergyManagerConsumersOnSensor(coordinator, entry),
         ]
@@ -447,28 +446,6 @@ class EnergyManagerCanTurnOnHeavyConsumerSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data:
             val = data.get("can_turn_on_heavy_consumer", False)
-            self._attr_native_value = "on" if val else "off"
-        self.async_write_ha_state()
-
-
-class EnergyManagerCanWasteEnergySensor(EnergyManagerSensorBase):
-    """Whether energy wasting mode is allowed (on/off)."""
-
-    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(
-            coordinator,
-            entry,
-            "can_waste_energy",
-            "Can Waste Energy",
-            icon="mdi:flash",
-            entity_category=EntityCategory.DIAGNOSTIC,
-        )
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        data = self.coordinator.data
-        if data:
-            val = data.get("can_waste_energy", False)
             self._attr_native_value = "on" if val else "off"
         self.async_write_ha_state()
 

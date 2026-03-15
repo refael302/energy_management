@@ -34,10 +34,11 @@ ENERGY_MODES = [
     MODE_MAX_ENERGY_WASTING,
 ]
 
-# Simplified modes for decision engine output (saving / normal / wasting)
+# Simplified modes for decision engine output (saving / normal / wasting / emergency_saving)
 SYSTEM_MODE_SAVING = "saving"
 SYSTEM_MODE_NORMAL = "normal"
 SYSTEM_MODE_WASTING = "wasting"
+SYSTEM_MODE_EMERGENCY_SAVING = "emergency_saving"
 
 # Daily margin thresholds for strategy recommendation (kWh)
 MARGIN_HIGH_THRESHOLD = 20
