@@ -24,6 +24,7 @@ from .const import (
     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     CONF_DISCHARGE_LIMIT_PERCENT,
     CONF_EOD_BATTERY_TARGET,
+    CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
     CONF_LIGHTS_TO_TURN_OFF,
@@ -41,10 +42,16 @@ from .const import (
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     DEFAULT_DISCHARGE_LIMIT_PERCENT,
     DEFAULT_EOD_BATTERY_TARGET,
+    DEFAULT_FORECAST_PR,
     DEFAULT_INVERTER_SIZE_KW,
+    DEFAULT_LATITUDE,
+    DEFAULT_LONGITUDE,
     DEFAULT_MAX_BATTERY_CURRENT_AMPS,
     DEFAULT_MINIMUM_BATTERY_RESERVE,
     DEFAULT_SAFETY_FORECAST_FACTOR,
+    DEFAULT_SYSTEM_SIZE_KW,
+    DEFAULT_TILT,
+    DEFAULT_AZIMUTH,
     DOMAIN,
     MAX_STRINGS,
 )
@@ -76,7 +83,7 @@ def _data_schema_user(hass: HomeAssistant) -> vol.Schema:
         lat = float(hass.config.latitude)
         lon = float(hass.config.longitude)
     except (TypeError, ValueError):
-        lat, lon = 32.08, 34.78
+        lat, lon = DEFAULT_LATITUDE, DEFAULT_LONGITUDE
     return vol.Schema(
         {
             vol.Required(CONF_BATTERY_SOC_SENSOR): _battery_sensor_selector(),
@@ -90,16 +97,17 @@ def _data_schema_user(hass: HomeAssistant) -> vol.Schema:
             ),
             vol.Required(CONF_LATITUDE, default=lat): vol.Coerce(float),
             vol.Required(CONF_LONGITUDE, default=lon): vol.Coerce(float),
-            vol.Required(CONF_BATTERY_CAPACITY, default=20.0): vol.Coerce(float),
-            vol.Required(CONF_BASELINE_CONSUMPTION, default=0.8): vol.Coerce(float),
-            vol.Required(CONF_MINIMUM_BATTERY_RESERVE, default=20): vol.Coerce(int),
-            vol.Required(CONF_SAFETY_FORECAST_FACTOR, default=90): vol.Coerce(int),
-            vol.Required(CONF_CONSUMER_DELAY, default=5): vol.Coerce(int),
-            vol.Required(CONF_EOD_BATTERY_TARGET, default=90): vol.Coerce(int),
-            vol.Required(CONF_MAX_BATTERY_CURRENT_AMPS, default=36): vol.Coerce(int),
-            vol.Required(CONF_DISCHARGE_LIMIT_PERCENT, default=80): vol.Coerce(int),
+            vol.Required(CONF_BATTERY_CAPACITY, default=DEFAULT_BATTERY_CAPACITY): vol.Coerce(float),
+            vol.Required(CONF_BASELINE_CONSUMPTION, default=DEFAULT_BASELINE_CONSUMPTION): vol.Coerce(float),
+            vol.Required(CONF_MINIMUM_BATTERY_RESERVE, default=DEFAULT_MINIMUM_BATTERY_RESERVE): vol.Coerce(int),
+            vol.Required(CONF_SAFETY_FORECAST_FACTOR, default=DEFAULT_SAFETY_FORECAST_FACTOR): vol.Coerce(int),
+            vol.Required(CONF_CONSUMER_DELAY, default=DEFAULT_CONSUMER_DELAY): vol.Coerce(int),
+            vol.Required(CONF_FORECAST_PR, default=DEFAULT_FORECAST_PR): vol.Coerce(float),
+            vol.Required(CONF_EOD_BATTERY_TARGET, default=DEFAULT_EOD_BATTERY_TARGET): vol.Coerce(int),
+            vol.Required(CONF_MAX_BATTERY_CURRENT_AMPS, default=DEFAULT_MAX_BATTERY_CURRENT_AMPS): vol.Coerce(int),
+            vol.Required(CONF_DISCHARGE_LIMIT_PERCENT, default=DEFAULT_DISCHARGE_LIMIT_PERCENT): vol.Coerce(int),
             vol.Required(
-                CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, default=5
+                CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, default=DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT
             ): vol.Coerce(int),
             vol.Optional(
                 CONF_INVERTER_SIZE_KW, default=DEFAULT_INVERTER_SIZE_KW
@@ -124,12 +132,12 @@ def _data_schema_user(hass: HomeAssistant) -> vol.Schema:
 def _strings_data_schema() -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required("string_0_system_size_kw", default=5.0): vol.Coerce(float),
-            vol.Required("string_0_tilt", default=30): vol.Coerce(float),
-            vol.Required("string_0_azimuth", default=0): vol.Coerce(float),
-            vol.Required("string_1_system_size_kw", default=5.0): vol.Coerce(float),
-            vol.Required("string_1_tilt", default=30): vol.Coerce(float),
-            vol.Required("string_1_azimuth", default=0): vol.Coerce(float),
+            vol.Required("string_0_system_size_kw", default=DEFAULT_SYSTEM_SIZE_KW): vol.Coerce(float),
+            vol.Required("string_0_tilt", default=DEFAULT_TILT): vol.Coerce(float),
+            vol.Required("string_0_azimuth", default=DEFAULT_AZIMUTH): vol.Coerce(float),
+            vol.Required("string_1_system_size_kw", default=DEFAULT_SYSTEM_SIZE_KW): vol.Coerce(float),
+            vol.Required("string_1_tilt", default=DEFAULT_TILT): vol.Coerce(float),
+            vol.Required("string_1_azimuth", default=DEFAULT_AZIMUTH): vol.Coerce(float),
         }
     )
 
@@ -255,6 +263,10 @@ def _options_schema_main(hass: HomeAssistant, merged: dict[str, Any]) -> vol.Sch
                 default=merged.get(CONF_SAFETY_FORECAST_FACTOR, DEFAULT_SAFETY_FORECAST_FACTOR),
             ): vol.Coerce(int),
             vol.Required(
+                CONF_FORECAST_PR,
+                default=merged.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR),
+            ): vol.Coerce(float),
+            vol.Required(
                 CONF_CONSUMER_DELAY,
                 default=merged.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY),
             ): vol.Coerce(int),
@@ -357,34 +369,34 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             return self.async_create_entry(data=data)
         merged = self._merged_config()
         strings = merged.get(CONF_STRINGS, [
-            {"system_size_kw": 5.0, "tilt": 30, "azimuth": 0},
-            {"system_size_kw": 5.0, "tilt": 30, "azimuth": 0},
+            {CONF_SYSTEM_SIZE_KW: DEFAULT_SYSTEM_SIZE_KW, CONF_TILT: DEFAULT_TILT, CONF_AZIMUTH: DEFAULT_AZIMUTH},
+            {CONF_SYSTEM_SIZE_KW: DEFAULT_SYSTEM_SIZE_KW, CONF_TILT: DEFAULT_TILT, CONF_AZIMUTH: DEFAULT_AZIMUTH},
         ])
         schema = vol.Schema(
             {
                 vol.Required(
                     "string_0_system_size_kw",
-                    default=strings[0].get(CONF_SYSTEM_SIZE_KW, 5.0),
+                    default=strings[0].get(CONF_SYSTEM_SIZE_KW, DEFAULT_SYSTEM_SIZE_KW),
                 ): vol.Coerce(float),
                 vol.Required(
                     "string_0_tilt",
-                    default=strings[0].get(CONF_TILT, 30),
+                    default=strings[0].get(CONF_TILT, DEFAULT_TILT),
                 ): vol.Coerce(float),
                 vol.Required(
                     "string_0_azimuth",
-                    default=strings[0].get(CONF_AZIMUTH, 0),
+                    default=strings[0].get(CONF_AZIMUTH, DEFAULT_AZIMUTH),
                 ): vol.Coerce(float),
                 vol.Required(
                     "string_1_system_size_kw",
-                    default=strings[1].get(CONF_SYSTEM_SIZE_KW, 5.0),
+                    default=strings[1].get(CONF_SYSTEM_SIZE_KW, DEFAULT_SYSTEM_SIZE_KW),
                 ): vol.Coerce(float),
                 vol.Required(
                     "string_1_tilt",
-                    default=strings[1].get(CONF_TILT, 30),
+                    default=strings[1].get(CONF_TILT, DEFAULT_TILT),
                 ): vol.Coerce(float),
                 vol.Required(
                     "string_1_azimuth",
-                    default=strings[1].get(CONF_AZIMUTH, 0),
+                    default=strings[1].get(CONF_AZIMUTH, DEFAULT_AZIMUTH),
                 ): vol.Coerce(float),
             }
         )

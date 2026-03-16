@@ -16,6 +16,9 @@ from pvlib import irradiance, solarposition
 import pandas as pd
 
 from ..const import (
+    DEFAULT_AZIMUTH,
+    DEFAULT_SYSTEM_SIZE_KW,
+    DEFAULT_TILT,
     OPEN_METEO_BASE_URL,
     OPEN_METEO_FORECAST_DAYS,
     OPEN_METEO_HOURLY,
@@ -132,19 +135,23 @@ class ForecastEngine:
         latitude: float,
         longitude: float,
         strings: list[dict[str, Any]],
+        pr_factor: float = 1.0,
     ) -> None:
         self.latitude = latitude
         self.longitude = longitude
+        self.pr_factor = pr_factor
         self.strings = [
             StringConfig(
-                system_size_kw=float(s.get("system_size_kw", 5.0)),
-                tilt=float(s.get("tilt", 30)),
-                azimuth=float(s.get("azimuth", 0)),
+                system_size_kw=float(s.get("system_size_kw", DEFAULT_SYSTEM_SIZE_KW)),
+                tilt=float(s.get("tilt", DEFAULT_TILT)),
+                azimuth=float(s.get("azimuth", DEFAULT_AZIMUTH)),
             )
             for s in (strings or [])
         ]
         if not self.strings:
-            self.strings = [StringConfig(5.0, 30.0, 0.0)]
+            self.strings = [
+                StringConfig(DEFAULT_SYSTEM_SIZE_KW, DEFAULT_TILT, DEFAULT_AZIMUTH)
+            ]
         self._last: SolarForecast | None = None
 
     async def fetch_and_compute(
@@ -231,7 +238,7 @@ class ForecastEngine:
         total_power_per_hour = []
         for hour_idx in range(len(times)):
             total_power_per_hour.append(
-                sum(p[hour_idx] for p in power_per_string)
+                sum(p[hour_idx] for p in power_per_string) * self.pr_factor
             )
 
         # Index-based: which hour slot does "now" fall into (robust to timezone/year)

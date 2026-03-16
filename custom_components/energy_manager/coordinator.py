@@ -26,6 +26,7 @@ from .const import (
     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     CONF_DISCHARGE_LIMIT_PERCENT,
     CONF_EOD_BATTERY_TARGET,
+    CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
     CONF_LATITUDE,
@@ -42,7 +43,19 @@ from .const import (
     CONF_SAFETY_FORECAST_FACTOR,
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_STRINGS,
+    DEFAULT_BATTERY_CAPACITY,
+    DEFAULT_BASELINE_CONSUMPTION,
+    DEFAULT_CONSUMER_DELAY,
+    DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
+    DEFAULT_DISCHARGE_LIMIT_PERCENT,
+    DEFAULT_EOD_BATTERY_TARGET,
+    DEFAULT_FORECAST_PR,
     DEFAULT_INVERTER_SIZE_KW,
+    DEFAULT_LATITUDE,
+    DEFAULT_LONGITUDE,
+    DEFAULT_MAX_BATTERY_CURRENT_AMPS,
+    DEFAULT_MINIMUM_BATTERY_RESERVE,
+    DEFAULT_SAFETY_FORECAST_FACTOR,
     DOMAIN,
     FORECAST_STRATEGY_CACHE_MINUTES,
     UPDATE_INTERVAL,
@@ -132,21 +145,22 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )
         self.model = EnergyModel(
-            battery_capacity_kwh=float(data.get(CONF_BATTERY_CAPACITY, 20)),
-            baseline_consumption_kw=float(data.get(CONF_BASELINE_CONSUMPTION, 0.8)),
-            eod_battery_target_percent=float(data.get(CONF_EOD_BATTERY_TARGET, 90)),
-            emergency_reserve_percent=float(data.get(CONF_MINIMUM_BATTERY_RESERVE, 20)),
-            safety_forecast_factor_percent=float(data.get(CONF_SAFETY_FORECAST_FACTOR, 90)),
-            max_battery_current_amps=float(data.get(CONF_MAX_BATTERY_CURRENT_AMPS, 36)),
-            discharge_limit_percent=float(data.get(CONF_DISCHARGE_LIMIT_PERCENT, 80)),
+            battery_capacity_kwh=float(data.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY)),
+            baseline_consumption_kw=float(data.get(CONF_BASELINE_CONSUMPTION, DEFAULT_BASELINE_CONSUMPTION)),
+            eod_battery_target_percent=float(data.get(CONF_EOD_BATTERY_TARGET, DEFAULT_EOD_BATTERY_TARGET)),
+            emergency_reserve_percent=float(data.get(CONF_MINIMUM_BATTERY_RESERVE, DEFAULT_MINIMUM_BATTERY_RESERVE)),
+            safety_forecast_factor_percent=float(data.get(CONF_SAFETY_FORECAST_FACTOR, DEFAULT_SAFETY_FORECAST_FACTOR)),
+            max_battery_current_amps=float(data.get(CONF_MAX_BATTERY_CURRENT_AMPS, DEFAULT_MAX_BATTERY_CURRENT_AMPS)),
+            discharge_limit_percent=float(data.get(CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT)),
             discharge_limit_deadband_percent=float(
-                data.get(CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, 5)
+                data.get(CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT)
             ),
         )
         self.forecast_engine = ForecastEngine(
-            latitude=float(data.get(CONF_LATITUDE, 32.08)),
-            longitude=float(data.get(CONF_LONGITUDE, 34.78)),
+            latitude=float(data.get(CONF_LATITUDE, DEFAULT_LATITUDE)),
+            longitude=float(data.get(CONF_LONGITUDE, DEFAULT_LONGITUDE)),
             strings=data.get(CONF_STRINGS, []),
+            pr_factor=float(data.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR)),
         )
         self.decision_engine = DecisionEngine()
         consumer_switches = data.get(CONF_CONSUMER_SWITCHES) or []
@@ -166,7 +180,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             consumer_switches,
             lights,
-            int(data.get(CONF_CONSUMER_DELAY, 5)),
+            int(data.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY)),
         )
         self._entity_ids = {
             "battery_soc": data.get(CONF_BATTERY_SOC_SENSOR),
