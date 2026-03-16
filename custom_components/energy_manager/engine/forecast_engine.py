@@ -155,10 +155,14 @@ class ForecastEngine:
         self._last: SolarForecast | None = None
 
     async def fetch_and_compute(
-        self, hass: Any, now: datetime | None = None
+        self,
+        hass: Any,
+        now: datetime | None = None,
+        inverter_size_kw: float = 0.0,
     ) -> SolarForecast:
         """
         Fetch hourly GHI, DNI, DHI from Open-Meteo; compute POA and power in executor.
+        When inverter_size_kw > 0, cap each hour's power so daily totals reflect real output.
         """
         if now is None:
             now = datetime.now(timezone.utc)
@@ -240,6 +244,11 @@ class ForecastEngine:
             total_power_per_hour.append(
                 sum(p[hour_idx] for p in power_per_string) * self.pr_factor
             )
+        # Cap each hour at inverter size so today/tomorrow sums reflect real production
+        if inverter_size_kw > 0:
+            total_power_per_hour = [
+                min(p, inverter_size_kw) for p in total_power_per_hour
+            ]
 
         # Index-based: which hour slot does "now" fall into (robust to timezone/year)
         now_ts = now.timestamp()

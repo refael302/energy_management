@@ -221,13 +221,16 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # 2. Forecast (cached every FORECAST_STRATEGY_CACHE_MINUTES)
             now_utc = datetime.now(timezone.utc)
             cache_min = timedelta(minutes=FORECAST_STRATEGY_CACHE_MINUTES)
+            inverter_size_kw = float(
+                current_config.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW) or 0
+            )
             if (
                 self._last_forecast is None
                 or self._last_forecast_time is None
                 or (now_utc - self._last_forecast_time) >= cache_min
             ):
                 forecast = await self.forecast_engine.fetch_and_compute(
-                    self.hass, now_utc
+                    self.hass, now_utc, inverter_size_kw=inverter_size_kw
                 )
                 self._last_forecast = forecast
                 self._last_forecast_time = now_utc
@@ -235,16 +238,8 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 forecast = self._last_forecast
             forecast_available = getattr(forecast, "available", True)
             self.model.forecast_available = forecast_available
-            inverter_size_kw = float(
-                current_config.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW) or 0
-            )
             if forecast_available:
-                f_next = forecast.forecast_next_hour_kwh
-                f_power = getattr(forecast, "forecast_current_power_kw", 0.0) or 0.0
-                if inverter_size_kw > 0:
-                    f_next = min(f_next, inverter_size_kw)
-                    f_power = min(f_power, inverter_size_kw)
-                self.model.forecast_next_hour_kwh = f_next
+                self.model.forecast_next_hour_kwh = forecast.forecast_next_hour_kwh
                 self.model.forecast_today_remaining_kwh = forecast.forecast_today_remaining_kwh
             else:
                 self.model.forecast_next_hour_kwh = 0.0
@@ -325,15 +320,12 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     consumers_on_count += 1
             consumers_total = len(consumer_entity_ids)
 
-            # 7. Expose for sensors (forecast-related as None when unavailable so sensors show unavailable)
+            # 7. Expose for sensors (forecast already capped by inverter in fetch_and_compute)
             if forecast_available:
                 f_next = forecast.forecast_next_hour_kwh
                 f_today = forecast.forecast_today_remaining_kwh
                 f_tomorrow = forecast.forecast_tomorrow_kwh
                 f_current = getattr(forecast, "forecast_current_power_kw", None) or 0.0
-                if inverter_size_kw > 0:
-                    f_next = min(f_next, inverter_size_kw)
-                    f_current = min(f_current, inverter_size_kw)
                 daily_margin = self.model.daily_margin_kwh
                 pv_safe = self.model.pv_remaining_today_safe_kwh
             else:
