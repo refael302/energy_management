@@ -325,11 +325,15 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f_next = forecast.forecast_next_hour_kwh
                 f_today = forecast.forecast_today_remaining_kwh
                 f_tomorrow = forecast.forecast_tomorrow_kwh
+                f_tomorrow_hourly = getattr(
+                    forecast, "forecast_tomorrow_hourly_kw", []
+                )
                 f_current = getattr(forecast, "forecast_current_power_kw", None) or 0.0
                 daily_margin = self.model.daily_margin_kwh
                 pv_safe = self.model.pv_remaining_today_safe_kwh
             else:
                 f_next = f_today = f_tomorrow = f_current = daily_margin = pv_safe = None
+                f_tomorrow_hourly = []
 
             hours_until_sunrise = _hours_until_sunrise(self.hass)
             usable_kwh = max(
@@ -363,6 +367,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "forecast_next_hour_kwh": f_next,
                 "forecast_today_remaining_kwh": f_today,
                 "forecast_tomorrow_kwh": f_tomorrow,
+                "forecast_tomorrow_hourly_kw": f_tomorrow_hourly,
                 "forecast_current_power_kw": f_current,
                 "energy_manager_mode": decision.system_mode,
                 "strategy_recommendation": decision.strategy_recommendation,
