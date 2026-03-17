@@ -57,6 +57,7 @@ async def async_setup_entry(
             EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
             EnergyManagerConsumersOnSensor(coordinator, entry),
             EnergyManagerBatteryRuntimeSensor(coordinator, entry),
+            EnergyManagerBatteryTimeToFullSensor(coordinator, entry),
         ]
     )
 
@@ -523,4 +524,25 @@ class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data is not None:
             self._attr_native_value = data.get("battery_runtime_hhmm", "99:59")
+        self.async_write_ha_state()
+
+
+class EnergyManagerBatteryTimeToFullSensor(EnergyManagerSensorBase):
+    """Battery time to full at current charge rate (HH:MM)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "battery_time_to_full_hhmm",
+            "Battery Time To Full",
+            icon="mdi:battery-clock-outline",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data is not None:
+            self._attr_native_value = data.get("battery_time_to_full_hhmm", "99:59")
         self.async_write_ha_state()

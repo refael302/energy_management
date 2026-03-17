@@ -341,14 +341,28 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 (soc - BATTERY_RUNTIME_MIN_SOC_PERCENT) / 100.0
                 * self.model.battery_capacity_kwh,
             )
-            house_kw = self.model.house_consumption_kw
-            if house_kw is None or house_kw <= 0:
+            discharge_kw = max(self.model.battery_power_kw or 0.0, 0.0)
+            if discharge_kw <= 0:
                 battery_runtime_hhmm = "99:59"
             else:
-                runtime_hours = usable_kwh / house_kw
+                runtime_hours = usable_kwh / discharge_kw
                 h = min(99, int(runtime_hours))
                 m = int((runtime_hours % 1) * 60)
                 battery_runtime_hhmm = f"{h:02d}:{m:02d}"
+
+            # Time until battery is full at current charge rate (HH:MM)
+            battery_time_to_full_hhmm = "99:59"
+            if soc is not None and soc < 100:
+                remaining_kwh = max(
+                    0.0,
+                    (100.0 - soc) / 100.0 * self.model.battery_capacity_kwh,
+                )
+                charge_kw = max(-(self.model.battery_power_kw or 0.0), 0.0)
+                if charge_kw > 0:
+                    charge_hours = remaining_kwh / charge_kw
+                    h_full = min(99, int(charge_hours))
+                    m_full = int((charge_hours % 1) * 60)
+                    battery_time_to_full_hhmm = f"{h_full:02d}:{m_full:02d}"
 
             _LOGGER.debug(
                 "update ok: mode=%s strategy=%s",
@@ -384,6 +398,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "hours_until_eod": self.model.hours_until_eod,
                 "hours_until_sunrise": hours_until_sunrise,
                 "battery_runtime_hhmm": battery_runtime_hhmm,
+                "battery_time_to_full_hhmm": battery_time_to_full_hhmm,
                 "consumers_on_count": consumers_on_count,
                 "consumers_total": consumers_total,
             }
