@@ -93,12 +93,21 @@ class LoadManager:
         return d if d in CONSUMER_DOMAINS else None
 
     async def _call_turn_off(self, entity_ids: list[str]) -> None:
-        """Call turn_off for each entity using its domain (switch or input_boolean)."""
+        """Call turn_off for each entity using its domain (switch or input_boolean).
+
+        Only send a turn_off when the current state is not already 'off', to avoid
+        repeatedly sending identical commands (e.g. to IR-based devices that beep on
+        every command even if they stay off).
+        """
         by_domain: dict[str, list[str]] = {}
         for eid in entity_ids:
             domain = self._domain(eid)
-            if domain:
-                by_domain.setdefault(domain, []).append(eid)
+            if not domain:
+                continue
+            state = self.hass.states.get(eid)
+            if state is None or state.state == "off":
+                continue
+            by_domain.setdefault(domain, []).append(eid)
         for domain, eids in by_domain.items():
             await self.hass.services.async_call(
                 domain, "turn_off", {"entity_id": eids}, blocking=True
@@ -142,6 +151,9 @@ class LoadManager:
         by_domain: dict[str, list[str]] = {}
         for eid in filtered:
             domain = eid.split(".", 1)[0]
+            state = self.hass.states.get(eid)
+            if state is None or state.state == "off":
+                continue
             by_domain.setdefault(domain, []).append(eid)
         for domain, eids in by_domain.items():
             await self.hass.services.async_call(
