@@ -1,0 +1,176 @@
+# Energy Manager Dashboard
+# Replace entity_id prefix: if your Energy Manager device created entities like
+# sensor.my_home_energy_forecast_tomorrow, use that prefix for all entities below.
+# Find your entities under: Settings > Devices > Energy Manager > Entities
+#
+# Required HACS card: ApexCharts Card (RomRider/apexcharts-card)
+#
+# For "Actual production" chart: set SOLAR_PRODUCTION_ENTITY to the same sensor
+# you use for solar production in the Energy Manager config (e.g. your inverter power sensor).
+
+title: Energy Manager
+path: energy-manager
+icon: mdi:leaf
+views:
+  - title: Overview
+    path: overview
+    type: panel
+    cards:
+      # ---- Status row: mode + reason, strategy + reason ----
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Status
+            show_header_toggle: false
+            entities:
+              - entity: sensor.energy_manager_energy_manager_mode
+                name: Mode
+              - entity: sensor.energy_manager_mode_reason
+                name: Reason
+              - entity: sensor.energy_manager_strategy_recommendation
+                name: Recommendation
+              - entity: sensor.energy_manager_strategy_reason
+                name: Reason
+
+      # ---- Power row: solar, consumption, battery SOC, battery power ----
+      - type: entities
+        title: Power
+        show_header_toggle: false
+        entities:
+          - entity: sensor.energy_manager_solar_production
+            name: Solar (kW)
+          - entity: sensor.energy_manager_house_consumption
+            name: Consumption (kW)
+          - entity: sensor.energy_manager_battery_soc
+            name: Battery %
+          - entity: sensor.energy_manager_battery_power
+            name: Battery (kW)
+
+      # ---- Consumers on + Battery time (conditional) ----
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            title: Consumers
+            show_header_toggle: false
+            entities:
+              - entity: sensor.energy_manager_consumers_on
+                name: On / Total
+
+          # When charging: show time to 100%
+          - type: conditional
+            conditions:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: sensor.energy_manager_charge_state
+                    state: "on"
+                  - condition: state
+                    entity: sensor.energy_manager_charge_state
+                    state: "max"
+            card:
+              type: entities
+              title: Battery time
+              show_header_toggle: false
+              entities:
+                - entity: sensor.energy_manager_battery_time_to_full
+                  name: "Time to 100%"
+
+          # When not charging: show time to 10%
+          - type: conditional
+            conditions:
+              - condition: not
+                conditions:
+                  - condition: or
+                    conditions:
+                      - condition: state
+                        entity: sensor.energy_manager_charge_state
+                        state: "on"
+                      - condition: state
+                        entity: sensor.energy_manager_charge_state
+                        state: "max"
+            card:
+              type: entities
+              title: Battery time
+              show_header_toggle: false
+              entities:
+                - entity: sensor.energy_manager_battery_runtime
+                  name: "Time to 10%"
+
+      # ---- Chart 1: Forecast today (from current hour) + tomorrow, current hour highlighted ----
+      - type: custom:apexcharts-card
+        header_title: Forecast (today + tomorrow)
+        apex_config:
+          chart:
+            type: bar
+            height: 220
+          plotOptions:
+            bar:
+              columnWidth: "85%"
+              distributed: true
+          xaxis:
+            type: datetime
+            labels:
+              datetimeFormatter:
+                hour: "HH:mm"
+                day: "dd/MM"
+          yaxis:
+            title:
+              text: kW
+          legend:
+            show: false
+        series:
+          - entity: sensor.energy_manager_forecast_tomorrow
+            type: column
+            name: Forecast
+            data_generator: |
+              const today = entity.attributes.hourly_forecast_today || [];
+              const tomorrow = entity.attributes.hourly_forecast || [];
+              const now = new Date();
+              const data = [];
+              let t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0);
+              const currentBarIndex = 0;
+              [...today, ...tomorrow].forEach((kw, i) => {
+                const isCurrent = i === currentBarIndex;
+                data.push({
+                  x: t.getTime(),
+                  y: kw,
+                  fillColor: isCurrent ? "#FFA500" : undefined
+                });
+                t = new Date(t.getTime() + 3600000);
+              });
+              return data;
+
+      # ---- Chart 2: Actual production (history). With Chart 1 = forecast vs actual view ----
+      - type: custom:apexcharts-card
+        header_title: Actual production (24h)
+        apex_config:
+          chart:
+            type: area
+            height: 200
+          xaxis:
+            type: datetime
+          yaxis:
+            title:
+              text: kW
+          stroke:
+            curve: smooth
+        series:
+          # Replace with your solar production entity (same as in Energy Manager config)
+          - entity: sensor.energy_manager_solar_production
+            type: area
+            name: Production
+            extend_to: now
+            duration:
+              days: 1
+
+      # ---- Optional: daily margin, reserve, recommended to turn off ----
+      - type: entities
+        title: Details
+        show_header_toggle: false
+        entities:
+          - entity: sensor.energy_manager_battery_reserve_state
+            name: Reserve state
+          - entity: sensor.energy_manager_daily_margin
+            name: Daily margin (kWh)
+          - entity: sensor.energy_manager_recommended_to_turn_off
+            name: Recommended to turn off

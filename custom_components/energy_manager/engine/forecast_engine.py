@@ -44,6 +44,7 @@ class SolarForecast:
     forecast_today_remaining_kwh: float = 0.0
     forecast_tomorrow_kwh: float = 0.0
     forecast_current_power_kw: float = 0.0
+    forecast_today_remaining_hourly_kw: list[float] = field(default_factory=list)
     forecast_tomorrow_hourly_kw: list[float] = field(default_factory=list)
     hourly_poa_per_string: list[list[float]] = field(default_factory=list)
     hourly_power_per_string: list[list[float]] = field(default_factory=list)
@@ -276,6 +277,10 @@ class ForecastEngine:
             for i in range(24, tomorrow_end)
         ]
         tomorrow_kwh = sum(total_power_per_hour[i] for i in range(24, tomorrow_end))
+        today_remaining_hourly_kw = [
+            round(total_power_per_hour[i], 2)
+            for i in range(hour_index, min(24, len(total_power_per_hour)))
+        ]
 
         if sum(total_power_per_hour) == 0:
             _LOGGER.warning(
@@ -296,6 +301,7 @@ class ForecastEngine:
             forecast_today_remaining_kwh=round(today_remaining_kwh, 2),
             forecast_tomorrow_kwh=round(tomorrow_kwh, 2),
             forecast_current_power_kw=round(current_power_kw, 2),
+            forecast_today_remaining_hourly_kw=today_remaining_hourly_kw,
             forecast_tomorrow_hourly_kw=tomorrow_hourly_kw,
             hourly_poa_per_string=poa_per_string,
             hourly_power_per_string=power_per_string,

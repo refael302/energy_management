@@ -272,6 +272,9 @@ class EnergyManagerForecastTomorrowSensor(EnergyManagerSensorBase):
             self._attr_native_value = data.get("forecast_tomorrow_kwh")
             self._attr_extra_state_attributes = {
                 "hourly_forecast": data.get("forecast_tomorrow_hourly_kw") or [],
+                "hourly_forecast_today": data.get("forecast_today_remaining_hourly_kw")
+                or [],
+                "current_hour_index": 0,
             }
         self.async_write_ha_state()
 
