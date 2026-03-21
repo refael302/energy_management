@@ -10,6 +10,8 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import aiohttp
 from pvlib import irradiance, solarposition
@@ -165,14 +167,29 @@ class ForecastEngine:
         """
         Fetch hourly GHI, DNI, DHI from Open-Meteo; compute POA and power in executor.
         When inverter_size_kw > 0, cap each hour's power so daily totals reflect real output.
+
+        ``now`` should be timezone-aware, typically ``homeassistant.util.dt.now()`` so
+        hour_index aligns with Open-Meteo hourly times in hass.config.time_zone.
         """
         if now is None:
             now = datetime.now(timezone.utc)
+        # Align hourly slots with Home Assistant wall clock (not UTC-only API).
+        tz_name = getattr(hass.config, "time_zone", None) or "UTC"
+        try:
+            local_zone = ZoneInfo(tz_name)
+        except Exception:
+            _LOGGER.warning(
+                "Invalid Home Assistant time_zone %r; using UTC for Open-Meteo",
+                tz_name,
+            )
+            tz_name = "UTC"
+            local_zone = ZoneInfo("UTC")
+        tz_param = quote(tz_name, safe="")
         url = (
             f"{OPEN_METEO_BASE_URL}?"
             f"latitude={self.latitude}&longitude={self.longitude}"
             f"&hourly={OPEN_METEO_HOURLY}&forecast_days={OPEN_METEO_FORECAST_DAYS}"
-            "&timezone=UTC"
+            f"&timezone={tz_param}"
         )
         try:
             async with aiohttp.ClientSession() as session:
@@ -212,7 +229,8 @@ class ForecastEngine:
                 ts = ts[:-1] + "+00:00"
             dt = datetime.fromisoformat(ts)
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                # Open-Meteo returns local wall time without offset when timezone= is set
+                dt = dt.replace(tzinfo=local_zone)
             return dt
 
         times = [_parse_time(ts) for ts in times_str]

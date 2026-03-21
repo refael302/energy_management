@@ -11,6 +11,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     BATTERY_RUNTIME_MIN_SOC_PERCENT,
@@ -229,8 +230,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 or self._last_forecast_time is None
                 or (now_utc - self._last_forecast_time) >= cache_min
             ):
+                # Use HA local "now" so hour_index matches Open-Meteo hourly slots (same TZ).
                 forecast = await self.forecast_engine.fetch_and_compute(
-                    self.hass, now_utc, inverter_size_kw=inverter_size_kw
+                    self.hass, dt_util.now(), inverter_size_kw=inverter_size_kw
                 )
                 self._last_forecast = forecast
                 self._last_forecast_time = now_utc
