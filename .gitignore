@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Secrets / local env ---
+.env
+.env.*
+secrets.yaml
+
+# --- IDE / editor ---
+.cursor/
+.vscode/
+.idea/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Local helper scripts ---
+*.bat
+
+# --- Logs / temp ---
+*.log
+tmp/
+temp/
