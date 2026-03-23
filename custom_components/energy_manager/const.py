@@ -107,3 +107,10 @@ BATTERY_RUNTIME_MIN_SOC_PERCENT = 10
 
 # Max strings (phase 1: 2)
 MAX_STRINGS = 2
+
+# Night bridge: relax "no PV next hour" strategy when safe to drain toward sunrise
+NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE = 2.0
+# First forecast hour with PV above this (kW) counts as solar production started
+NIGHT_BRIDGE_FORECAST_PV_THRESHOLD_KW = 0.05
+# Solar sensor (kW) must be below this while sun is below horizon for "dark" guard
+NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW = 0.05

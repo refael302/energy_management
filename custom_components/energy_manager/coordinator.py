@@ -59,6 +59,7 @@ from .const import (
     DEFAULT_SAFETY_FORECAST_FACTOR,
     DOMAIN,
     FORECAST_STRATEGY_CACHE_MINUTES,
+    NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     UPDATE_INTERVAL,
 )
 from .engine import DecisionEngine, EnergyModel, ForecastEngine, LoadManager
@@ -243,10 +244,24 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if forecast_available:
                 self.model.forecast_next_hour_kwh = forecast.forecast_next_hour_kwh
                 self.model.forecast_today_remaining_kwh = forecast.forecast_today_remaining_kwh
+                self.model.forecast_tomorrow_kwh = forecast.forecast_tomorrow_kwh
+                self.model.hours_until_first_pv = getattr(
+                    forecast, "hours_until_first_pv", 0.0
+                )
             else:
                 self.model.forecast_next_hour_kwh = 0.0
                 self.model.forecast_today_remaining_kwh = 0.0
+                self.model.forecast_tomorrow_kwh = 0.0
+                self.model.hours_until_first_pv = 0.0
             self.model.hours_until_eod = _hours_until_sunset(self.hass)
+            hours_until_sunrise = _hours_until_sunrise(self.hass)
+            self.model.hours_until_sunrise = hours_until_sunrise
+            sun_ent = self.hass.states.get("sun.sun")
+            self.model.sun_below_horizon = (
+                sun_ent.state == "below_horizon"
+                if sun_ent is not None
+                else True
+            )
 
             # 3. Derived
             self.model.update_derived()
@@ -259,9 +274,14 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             manual_strategy_override = bool(current_config.get(CONF_MANUAL_STRATEGY_OVERRIDE, current_config.get(CONF_MANUAL_OVERRIDE, False)))
             manual_mode = current_config.get(CONF_MANUAL_MODE) or SYSTEM_MODE_NORMAL
             manual_strategy = current_config.get(CONF_MANUAL_STRATEGY) or STRATEGY_MEDIUM
+            night_bridge_window = (
+                0.0 < self.model.hours_until_sunrise
+                <= NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE
+            )
             if (
                 self._last_strategy_time is None
                 or (now_utc - self._last_strategy_time) >= cache_min
+                or night_bridge_window
             ):
                 self._last_strategy, self._last_strategy_reason = recommend_battery_strategy(
                     self.model
@@ -341,7 +361,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f_tomorrow_hourly = []
                 f_today_hourly = []
 
-            hours_until_sunrise = _hours_until_sunrise(self.hass)
             usable_kwh = max(
                 0.0,
                 (soc - BATTERY_RUNTIME_MIN_SOC_PERCENT) / 100.0
@@ -404,6 +423,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "pv_remaining_today_safe_kwh": pv_safe,
                 "hours_until_eod": self.model.hours_until_eod,
                 "hours_until_sunrise": hours_until_sunrise,
+                "hours_until_first_pv": self.model.hours_until_first_pv,
+                "night_bridge_relaxed": self.model.night_bridge_relaxed,
+                "night_bridge_tomorrow_ok": self.model.night_bridge_tomorrow_ok,
+                "night_bridge_energy_need_kwh": self.model.night_bridge_energy_need_kwh,
+                "night_bridge_usable_kwh": self.model.night_bridge_usable_kwh,
                 "battery_runtime_hhmm": battery_runtime_hhmm,
                 "battery_time_to_full_hhmm": battery_time_to_full_hhmm,
                 "consumers_on_count": consumers_on_count,
