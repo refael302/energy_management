@@ -50,6 +50,8 @@ async def async_setup_entry(
             EnergyManagerPvRemainingSafeSensor(coordinator, entry),
             EnergyManagerHoursUntilEodSensor(coordinator, entry),
             EnergyManagerHoursUntilSunriseSensor(coordinator, entry),
+            EnergyManagerHoursUntilFirstPvSensor(coordinator, entry),
+            EnergyManagerNightBridgeRelaxedSensor(coordinator, entry),
             EnergyManagerStrategyRecommendationSensor(coordinator, entry),
             EnergyManagerStrategyReasonSensor(coordinator, entry),
             EnergyManagerChargeStateSensor(coordinator, entry),
@@ -372,6 +374,44 @@ class EnergyManagerHoursUntilSunriseSensor(EnergyManagerSensorBase):
             state_class=SensorStateClass.MEASUREMENT,
             unit="h",
         )
+
+
+class EnergyManagerHoursUntilFirstPvSensor(EnergyManagerSensorBase):
+    """Whole hours until forecast PV exceeds threshold (from current slot)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "hours_until_first_pv",
+            "Hours Until Forecast PV",
+            icon="mdi:solar-panel",
+            state_class=SensorStateClass.MEASUREMENT,
+            unit="h",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+
+class EnergyManagerNightBridgeRelaxedSensor(EnergyManagerSensorBase):
+    """Whether next-hour PV check is relaxed (night bridge near sunrise)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "night_bridge_relaxed",
+            "Night Bridge Relaxed",
+            icon="mdi:bridge",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data is not None:
+            relaxed = data.get("night_bridge_relaxed")
+            self._attr_native_value = "on" if relaxed else "off"
+        self.async_write_ha_state()
 
 
 class EnergyManagerStrategyRecommendationSensor(EnergyManagerSensorBase):

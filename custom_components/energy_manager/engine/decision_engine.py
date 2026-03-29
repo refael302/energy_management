@@ -57,7 +57,9 @@ def recommend_battery_strategy(model: EnergyModel) -> tuple[str, str]:
             STRATEGY_FULL,
             f"FULL – EOD target not reachable (daily_margin={daily_margin} kWh)",
         )
-    if pv_next_hour < consumption_next_hour:
+    if pv_next_hour < consumption_next_hour and not getattr(
+        model, "night_bridge_relaxed", False
+    ):
         return (
             STRATEGY_FULL,
             f"FULL – no PV for next hour (need {consumption_next_hour} kWh)",
