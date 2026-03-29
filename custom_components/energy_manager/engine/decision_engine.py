@@ -83,9 +83,10 @@ def recommend_battery_strategy(model: EnergyModel) -> tuple[str, str]:
 class DecisionEngine:
     """
     Replicates automation "[חבילת אנרגיה] החלטות – בחירת מצב".
-    Priority: 1) Max charging → wasting, 2) Very low battery → saving,
-    3) Can waste → wasting, 4) Low battery → saving, 5) At recommendation → normal,
-    6) Default → saving.
+    Priority: 1) Max charging → wasting, 2) Very low battery → emergency_saving,
+    3) Can waste → wasting, 4) Low battery → saving (only if no forecast headroom),
+    5) At recommendation → normal, 6) Below recommendation → saving or normal
+    when forecast_available and daily_margin >= 0.
     """
 
     def __init__(self) -> None:
@@ -144,6 +145,11 @@ class DecisionEngine:
         min_level = {"low": 1, "medium": 2, "high": 3, "full": 4}
         cur = levels.get(battery_status, 0)
         req = min_level.get(rec, 4)
+        # When forecast says we have headroom for the day, do not force saving for
+        # "low" SOC or "below strategy level" — only very_low still triggers shutdown.
+        forecast_headroom_ok = bool(
+            getattr(model, "forecast_available", True)
+        ) and model.daily_margin_kwh >= 0.0
 
         # 1. Max charging for 5 min → wasting
         if charging_state == "max" and self._charge_state_max_duration_minutes >= 5:
@@ -172,8 +178,12 @@ class DecisionEngine:
                 mode_reason="Can waste energy",
             )
 
-        # 4. Low battery + not max charging → saving
-        if battery_status == "low" and charging_state != "max":
+        # 4. Low battery + not max charging → saving (conservative when no forecast headroom)
+        if (
+            battery_status == "low"
+            and charging_state != "max"
+            and not forecast_headroom_ok
+        ):
             return DecisionResult(
                 strategy_recommendation=strat,
                 strategy_reason=strategy_reason,
@@ -190,7 +200,14 @@ class DecisionEngine:
                 mode_reason="Battery at recommendation level",
             )
 
-        # 6. Default: below recommendation → saving
+        # 6. Default: below recommendation → saving, or normal if forecast headroom OK
+        if forecast_headroom_ok:
+            return DecisionResult(
+                strategy_recommendation=strat,
+                strategy_reason=strategy_reason,
+                system_mode=SYSTEM_MODE_NORMAL,
+                mode_reason="Below recommendation (forecast headroom OK)",
+            )
         return DecisionResult(
             strategy_recommendation=strat,
             strategy_reason=strategy_reason,
