@@ -21,7 +21,6 @@ from ..const import (
     DEFAULT_AZIMUTH,
     DEFAULT_SYSTEM_SIZE_KW,
     DEFAULT_TILT,
-    NIGHT_BRIDGE_FORECAST_PV_THRESHOLD_KW,
     OPEN_METEO_BASE_URL,
     OPEN_METEO_FORECAST_DAYS,
     OPEN_METEO_HOURLY,
@@ -52,8 +51,6 @@ class SolarForecast:
     hourly_poa_per_string: list[list[float]] = field(default_factory=list)
     hourly_power_per_string: list[list[float]] = field(default_factory=list)
     available: bool = True  # False when fetch failed or data empty
-    # Whole hours from current slot until first hour with PV above threshold (0 = this hour)
-    hours_until_first_pv: float = 0.0
 
 
 def _compute_poa_and_power_sync(
@@ -279,17 +276,6 @@ class ForecastEngine:
         hour_index = int((now_ts - t0_ts) / 3600)
         hour_index = max(0, min(hour_index, len(times) - 1))
 
-        th_pv = NIGHT_BRIDGE_FORECAST_PV_THRESHOLD_KW
-        first_pv_idx: int | None = None
-        for i in range(hour_index, len(total_power_per_hour)):
-            if total_power_per_hour[i] > th_pv:
-                first_pv_idx = i
-                break
-        if first_pv_idx is None:
-            hours_until_first_pv = float(max(0, len(total_power_per_hour) - hour_index))
-        else:
-            hours_until_first_pv = float(first_pv_idx - hour_index)
-
         current_power_kw = total_power_per_hour[hour_index]
         next_hour_kwh = (
             total_power_per_hour[hour_index + 1]
@@ -338,7 +324,6 @@ class ForecastEngine:
             hourly_poa_per_string=poa_per_string,
             hourly_power_per_string=power_per_string,
             available=True,
-            hours_until_first_pv=round(hours_until_first_pv, 2),
         )
         self._last = result
         return result

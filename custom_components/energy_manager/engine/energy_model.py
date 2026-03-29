@@ -8,11 +8,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..const import (
-    NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
-    NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW,
-)
-
 
 @dataclass
 class EnergyModel:
@@ -42,11 +37,6 @@ class EnergyModel:
 
     # Time until end of day (hours)
     hours_until_eod: float = 0.0
-    # Night bridge inputs (set by coordinator before update_derived)
-    hours_until_sunrise: float = 999.0
-    sun_below_horizon: bool = True
-    forecast_tomorrow_kwh: float = 0.0
-    hours_until_first_pv: float = 0.0
 
     # --- Derived (computed) ---
     battery_status: str = "medium"
@@ -59,17 +49,12 @@ class EnergyModel:
     needed_energy_today_kwh: float = 0.0
     pv_remaining_today_safe_kwh: float = 0.0
     daily_margin_kwh: float = 0.0
-    night_bridge_relaxed: bool = False
-    night_bridge_tomorrow_ok: bool = False
-    night_bridge_energy_need_kwh: float = 0.0
-    night_bridge_usable_kwh: float = 0.0
 
     def update_derived(self) -> None:
         """Update all derived fields from current raw and config values."""
         self._battery_status()
         self._charge_discharge_states()
         self._consumption_and_headroom()
-        self._night_bridge()
 
     def _battery_status(self) -> None:
         if self.battery_soc < 15:
@@ -139,57 +124,6 @@ class EnergyModel:
         else:
             self.pv_remaining_today_safe_kwh = 0.0
             self.daily_margin_kwh = -1.0  # conservative: assume no PV headroom
-
-    def _night_bridge(self) -> None:
-        """Relax next-hour PV check near sunrise when battery can last until forecast PV and tomorrow looks safe."""
-        self.night_bridge_relaxed = False
-        self.night_bridge_tomorrow_ok = False
-        self.night_bridge_energy_need_kwh = 0.0
-        self.night_bridge_usable_kwh = 0.0
-        if not self.forecast_available:
-            return
-        pv_tomorrow_safe = round(
-            self.forecast_tomorrow_kwh * self.safety_forecast_factor_percent / 100.0,
-            2,
-        )
-        charge_from_floor_kwh = round(
-            max(
-                0.0,
-                (self.eod_battery_target_percent - self.emergency_reserve_percent)
-                / 100.0
-                * self.battery_capacity_kwh,
-            ),
-            2,
-        )
-        tomorrow_load_kwh = round(self.baseline_consumption_kw * 24.0, 2)
-        self.night_bridge_tomorrow_ok = pv_tomorrow_safe >= (
-            charge_from_floor_kwh + tomorrow_load_kwh
-        )
-        self.night_bridge_energy_need_kwh = round(
-            self.baseline_consumption_kw * self.hours_until_first_pv, 2
-        )
-        self.night_bridge_usable_kwh = round(
-            max(
-                0.0,
-                (self.battery_soc - self.emergency_reserve_percent)
-                / 100.0
-                * self.battery_capacity_kwh,
-            ),
-            2,
-        )
-        window = (
-            0.0 < self.hours_until_sunrise <= NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE
-        )
-        dark = self.sun_below_horizon and (
-            self.solar_production_kw < NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW
-        )
-        self.night_bridge_relaxed = (
-            window
-            and dark
-            and self.night_bridge_tomorrow_ok
-            and self.daily_margin_kwh >= 0.0
-            and self.night_bridge_usable_kwh >= self.night_bridge_energy_need_kwh
-        )
 
     battery_strategy_recommendation: str = "full"
 
