@@ -26,6 +26,34 @@ if TYPE_CHECKING:
     from .energy_model import EnergyModel
 
 
+def recommend_battery_strategy_no_forecast(model: EnergyModel) -> tuple[str, str]:
+    """
+    When Open-Meteo / PV forecast is unavailable, drive strategy from battery band only.
+    Maps each band to the next-lower target so decide() yields wasting until SOC drops
+    one level (full→high→medium→low); low / very low stay conservative (FULL).
+    """
+    status = getattr(model, "battery_status", "medium")
+    if status == "full":
+        return (
+            STRATEGY_HIGH,
+            "HIGH – no forecast (target high)",
+        )
+    if status == "high":
+        return (
+            STRATEGY_MEDIUM,
+            "MEDIUM – no forecast (target medium)",
+        )
+    if status == "medium":
+        return (
+            STRATEGY_LOW,
+            "LOW – no forecast (target low)",
+        )
+    return (
+        STRATEGY_FULL,
+        "FULL – no forecast (conservative)",
+    )
+
+
 @dataclass
 class DecisionResult:
     """Output of the decision engine."""
@@ -40,13 +68,10 @@ def recommend_battery_strategy(model: EnergyModel) -> tuple[str, str]:
     """
     Replicate script recommend_battery_strategy_v5.
     Returns (strategy_recommendation, strategy_reason).
-    When forecast is unavailable, recommend FULL (conservative) and reason explains we use current state only.
+    When forecast is unavailable, use recommend_battery_strategy_no_forecast (SOC bands).
     """
     if not getattr(model, "forecast_available", True):
-        return (
-            STRATEGY_FULL,
-            "FULL – forecast unavailable, using current state only",
-        )
+        return recommend_battery_strategy_no_forecast(model)
 
     daily_margin = model.daily_margin_kwh
     consumption_next_hour = model.house_consumption_kw

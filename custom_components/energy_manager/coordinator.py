@@ -198,6 +198,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_strategy: str | None = None
         self._last_strategy_reason: str = ""
         self._last_strategy_time: datetime | None = None
+        self._prev_forecast_available: bool | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch sensors, forecast, update model, run decision, apply load manager."""
@@ -240,6 +241,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 forecast = self._last_forecast
             forecast_available = getattr(forecast, "available", True)
+            forecast_availability_changed = (
+                self._prev_forecast_available is not None
+                and self._prev_forecast_available != forecast_available
+            )
+            self._prev_forecast_available = forecast_available
             self.model.forecast_available = forecast_available
             if forecast_available:
                 self.model.forecast_next_hour_kwh = forecast.forecast_next_hour_kwh
@@ -282,6 +288,8 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._last_strategy_time is None
                 or (now_utc - self._last_strategy_time) >= cache_min
                 or night_bridge_window
+                or not forecast_available
+                or forecast_availability_changed
             ):
                 self._last_strategy, self._last_strategy_reason = recommend_battery_strategy(
                     self.model
