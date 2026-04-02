@@ -11,8 +11,10 @@ SERVICE_RESET_CONSUMER_LEARN = "reset_consumer_learn"
 CONSUMER_ACTION_DELAY_LEARNED_MINUTES = 1
 CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES = 5
 # Hysteresis: only adopt new raw budget if relative change >= this ratio vs last locked budget
+# (fixed in code; not exposed in config UI)
 DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO = 0.15
 # Reserve fraction of battery discharge headroom (0.3 = leave 30% for user / transients)
+# (fixed in code; not exposed in config UI)
 DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO = 0.30
 # Assumed DC V for kW estimate when only battery current is available (48V nominal system)
 DEFAULT_BATTERY_NOMINAL_VOLTAGE = 51.0
@@ -21,9 +23,6 @@ CONSUMER_BUDGET_MARGIN_NEG_CAP_KW = 0.0
 CONSUMER_BUDGET_MARGIN_HIGH_CAP_KW = 3.0  # daily_margin <= MARGIN_HIGH_THRESHOLD
 CONSUMER_BUDGET_MARGIN_MEDIUM_CAP_KW = 8.0  # up to MARGIN_MEDIUM_MAX
 CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW = 80.0  # plenty of headroom
-
-CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO = "consumer_budget_hysteresis_ratio"
-CONF_CONSUMER_DISCHARGE_RESERVE_RATIO = "consumer_discharge_reserve_ratio"
 
 CONSUMER_LEARN_MIN_SAMPLES = 3
 CONSUMER_LEARN_MAX_SAMPLES = 12

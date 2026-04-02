@@ -24,8 +24,6 @@ from .const import (
     BATTERY_RUNTIME_MIN_SOC_PERCENT,
     CONF_BASELINE_CONSUMPTION,
     STRATEGY_MEDIUM,
-    CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-    CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
     DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
     DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
     SYSTEM_MODE_NORMAL,
@@ -444,18 +442,8 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.model.house_consumption_kw,
                 )
                 discharge_kw = max(0.0, self.model.battery_power_kw)
-                reserve = float(
-                    current_config.get(
-                        CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
-                        DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
-                    )
-                )
-                hyst_ratio = float(
-                    current_config.get(
-                        CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-                        DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-                    )
-                )
+                reserve = float(DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO)
+                hyst_ratio = float(DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO)
                 budget_ceilings = compute_raw_budget_kw(
                     self.model, inverter_size_kw, reserve
                 )

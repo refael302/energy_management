@@ -20,9 +20,7 @@ from .const import (
     CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
-    CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
     CONF_CONSUMER_DELAY,
-    CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
     CONF_CONSUMER_SWITCHES,
     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     CONF_DISCHARGE_LIMIT_PERCENT,
@@ -42,9 +40,7 @@ from .const import (
     CONF_TILT,
     DEFAULT_BASELINE_CONSUMPTION,
     DEFAULT_BATTERY_CAPACITY,
-    DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
     DEFAULT_CONSUMER_DELAY,
-    DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     DEFAULT_DISCHARGE_LIMIT_PERCENT,
     DEFAULT_EOD_BATTERY_TARGET,
@@ -159,7 +155,7 @@ def main_params_schema_user(hass: HomeAssistant) -> vol.Schema:
 def main_params_schema_options(
     hass: HomeAssistant, merged: dict[str, Any]
 ) -> vol.Schema:
-    """Options flow step: same fields as user + consumer budget tuning."""
+    """Options flow step: same fields as initial user step (merged defaults)."""
     try:
         lat_d = merged.get(CONF_LATITUDE, hass.config.latitude)
         lon_d = merged.get(CONF_LONGITUDE, hass.config.longitude)
@@ -259,24 +255,6 @@ def main_params_schema_options(
                 CONF_RECOMMENDED_TO_TURN_OFF,
                 default=list_or_empty(merged.get(CONF_RECOMMENDED_TO_TURN_OFF)),
             ): super_saving_entity_selector(),
-            vol.Optional(
-                CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-                default=float(
-                    merged.get(
-                        CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-                        DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-                    )
-                ),
-            ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=0.5)),
-            vol.Optional(
-                CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
-                default=float(
-                    merged.get(
-                        CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
-                        DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
-                    )
-                ),
-            ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=0.8)),
         }
     )
 
