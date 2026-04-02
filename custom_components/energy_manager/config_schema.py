@@ -104,7 +104,7 @@ def _home_lat_lon(hass: HomeAssistant) -> tuple[float, float]:
 def main_params_schema_minimal(
     merged: dict[str, Any] | None = None,
 ) -> vol.Schema:
-    """Step 1: battery/house/solar sensors and consumer switches only."""
+    """Step 1: sensors, consumer switches, and battery capacity (kWh)."""
     if merged is None:
         return vol.Schema(
             {
@@ -113,6 +113,9 @@ def main_params_schema_minimal(
                 vol.Required(CONF_SOLAR_PRODUCTION_SENSOR): sensor_selector(),
                 vol.Required(CONF_HOUSE_CONSUMPTION_SENSOR): sensor_selector(),
                 vol.Required(CONF_CONSUMER_SWITCHES): consumer_entity_selector(),
+                vol.Required(
+                    CONF_BATTERY_CAPACITY, default=DEFAULT_BATTERY_CAPACITY
+                ): vol.Coerce(float),
             }
         )
     return vol.Schema(
@@ -137,6 +140,10 @@ def main_params_schema_minimal(
                 CONF_CONSUMER_SWITCHES,
                 default=list_or_empty(merged.get(CONF_CONSUMER_SWITCHES)),
             ): consumer_entity_selector(),
+            vol.Required(
+                CONF_BATTERY_CAPACITY,
+                default=merged.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY),
+            ): vol.Coerce(float),
         }
     )
 
@@ -145,10 +152,6 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
     """Step 2: numeric params and optional entities. Lat/lon are set in the flow."""
     return vol.Schema(
         {
-            vol.Required(
-                CONF_BATTERY_CAPACITY,
-                default=base.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY),
-            ): vol.Coerce(float),
             vol.Required(
                 CONF_BASELINE_CONSUMPTION,
                 default=base.get(CONF_BASELINE_CONSUMPTION, DEFAULT_BASELINE_CONSUMPTION),
