@@ -19,7 +19,9 @@ from .const import (
     CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
+    CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
     CONF_CONSUMER_DELAY,
+    CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
     CONF_CONSUMER_SWITCHES,
     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     CONF_DISCHARGE_LIMIT_PERCENT,
@@ -315,6 +317,24 @@ def _options_schema_main(hass: HomeAssistant, merged: dict[str, Any]) -> vol.Sch
                     multiple=True,
                 ),
             ),
+            vol.Optional(
+                CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
+                default=float(
+                    merged.get(
+                        CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
+                        DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
+                    )
+                ),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=0.5)),
+            vol.Optional(
+                CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
+                default=float(
+                    merged.get(
+                        CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
+                        DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
+                    )
+                ),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=0.8)),
         }
     )
 

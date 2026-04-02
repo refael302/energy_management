@@ -24,7 +24,12 @@ from .const import (
     BATTERY_RUNTIME_MIN_SOC_PERCENT,
     CONF_BASELINE_CONSUMPTION,
     STRATEGY_MEDIUM,
+    CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
+    CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
+    DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
+    DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
     SYSTEM_MODE_NORMAL,
+    SYSTEM_MODE_WASTING,
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
@@ -70,6 +75,14 @@ from .const import (
     UPDATE_INTERVAL,
 )
 from .engine import DecisionEngine, EnergyModel, ForecastEngine, LoadManager
+from .engine.consumer_budget import (
+    apply_hysteresis,
+    compose_raw_budget_kw,
+    compute_raw_budget_kw,
+    marginal_battery_load_fraction,
+    select_learned_consumers,
+)
+from .engine.load_manager import WastingContext
 from .engine.decision_engine import recommend_battery_strategy
 
 _LOGGER = logging.getLogger(__name__)
@@ -210,6 +223,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._prev_forecast_available: bool | None = None
         self._forecast_store = create_forecast_store(hass, entry.entry_id)
         self._forecast_disk_cache: dict[str, Any] | None = None
+        self._locked_consumer_budget_kw: float | None = None
 
     def _schedule_consumer_learn(self, entity_id: str, baseline_w: float) -> None:
         """After integration turns a consumer on, sample house meter delta (async)."""
@@ -414,12 +428,73 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._last_decision = decision
 
-            # 5. Load manager actions (act only on mode; no extra input gates)
+            # 5. Consumer budget (wasting) + load manager
             super_saving = self.model.battery_status == "very low"
+            wasting_context: WastingContext | None = None
+            budget_ceilings: Any = None
+            raw_budget_kw = 0.0
+            effective_budget_kw = 0.0
+
+            if decision.system_mode != SYSTEM_MODE_WASTING:
+                self._locked_consumer_budget_kw = None
+
+            if decision.system_mode == SYSTEM_MODE_WASTING:
+                marginal = marginal_battery_load_fraction(
+                    self.model.solar_production_kw,
+                    self.model.house_consumption_kw,
+                )
+                discharge_kw = max(0.0, self.model.battery_power_kw)
+                reserve = float(
+                    current_config.get(
+                        CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
+                        DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
+                    )
+                )
+                hyst_ratio = float(
+                    current_config.get(
+                        CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
+                        DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
+                    )
+                )
+                budget_ceilings = compute_raw_budget_kw(
+                    self.model, inverter_size_kw, reserve
+                )
+                raw_budget_kw = compose_raw_budget_kw(
+                    budget_ceilings,
+                    marginal_battery_per_kw=marginal,
+                    battery_discharging_kw=discharge_kw,
+                )
+                effective_budget_kw, budget_updated = apply_hysteresis(
+                    raw_budget_kw,
+                    self._locked_consumer_budget_kw,
+                    hyst_ratio,
+                )
+                if budget_updated:
+                    self._locked_consumer_budget_kw = effective_budget_kw
+                learned_map = self.consumer_learner.get_learned_kw()
+                consumer_list = _normalize_consumer_entity_ids(
+                    current_config.get(CONF_CONSUMER_SWITCHES)
+                )
+                learned_target = select_learned_consumers(
+                    consumer_list,
+                    learned_map,
+                    effective_budget_kw,
+                    budget_ceilings.discharge_kw,
+                    marginal,
+                )
+                wasting_context = WastingContext(
+                    consumers_ordered=consumer_list,
+                    learned_kw=dict(learned_map),
+                    learned_target=learned_target,
+                    discharge_headroom_kw=budget_ceilings.discharge_kw,
+                    marginal_battery_per_kw=marginal,
+                )
+
             await self.load_manager.apply_mode(
                 decision.system_mode,
                 super_saving=super_saving,
                 house_consumption_entity_id=self._entity_ids.get("house"),
+                wasting_context=wasting_context,
             )
 
             # 6. Discharge over limit: turn off one consumer when discharge_state -> max
@@ -431,7 +506,8 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     current_config.get(CONF_CONSUMER_SWITCHES)
                 )
                 await self.load_manager.discharge_over_limit_turn_off_one(
-                    consumer_list
+                    consumer_list,
+                    learned_kw=self.consumer_learner.get_learned_kw(),
                 )
             self._prev_discharge_state = self.model.discharge_state
 
@@ -576,6 +652,30 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     sum(self.consumer_learner.get_learned_kw().values()), 3
                 ),
                 "consumer_learn_pending_samples": self.consumer_learner.get_pending_counts(),
+                "consumer_budget_raw_kw": round(raw_budget_kw, 3)
+                if decision.system_mode == SYSTEM_MODE_WASTING
+                else None,
+                "consumer_budget_locked_kw": round(
+                    self._locked_consumer_budget_kw or 0.0, 3
+                )
+                if decision.system_mode == SYSTEM_MODE_WASTING
+                else None,
+                "consumer_budget_effective_kw": round(effective_budget_kw, 3)
+                if decision.system_mode == SYSTEM_MODE_WASTING
+                else None,
+                "consumer_budget_ceilings": {
+                    "instant_kw": budget_ceilings.instant_kw,
+                    "strategic_kw": budget_ceilings.strategic_kw,
+                    "night_spread_kw": budget_ceilings.night_spread_kw,
+                    "discharge_kw": budget_ceilings.discharge_kw,
+                }
+                if budget_ceilings is not None
+                else None,
+                "consumer_learned_target_ids": sorted(
+                    wasting_context.learned_target,
+                )
+                if wasting_context is not None
+                else [],
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)
