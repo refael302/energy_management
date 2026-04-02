@@ -2,46 +2,54 @@
   "config": {
     "step": {
       "user": {
-        "title": "Sensors and parameters",
-        "description": "Select sensors and set energy parameters. In the next step you will set 2 PV strings: installation angle (tilt), azimuth, and installed capacity (kW) for each. You can change these later from the integration options.",
+        "title": "Sensors and consumers",
+        "description": "Select the battery, solar, and house sensors plus consumer switches. Next you will set numeric parameters (defaults are fine for most users), then two PV strings for the forecast.",
         "data": {
           "battery_soc_sensor": "Battery state of charge (SOC) sensor",
           "battery_power_sensor": "Battery power sensor",
           "solar_production_sensor": "Solar production power sensor",
           "house_consumption_sensor": "House consumption power sensor",
-          "consumer_switches": "Consumer switches (heavy loads)",
-          "latitude": "Latitude",
-          "longitude": "Longitude",
-          "battery_capacity": "Battery capacity",
-          "baseline_consumption": "Baseline consumption",
-          "minimum_battery_reserve": "Minimum battery reserve",
-          "safety_forecast_factor": "Safety forecast factor",
-          "consumer_delay": "Consumer delay (normal mode ramp)",
-          "eod_battery_target": "End-of-day battery target",
-          "max_battery_current_amps": "Max battery current",
-          "discharge_limit_percent": "Discharge limit",
-          "discharge_limit_deadband_percent": "Discharge limit deadband",
-          "battery_current_sensor": "Battery current sensor (optional)",
-          "lights_to_turn_off": "Devices to turn off in super-saving (optional)",
-          "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
+          "consumer_switches": "Consumer switches (heavy loads)"
         },
         "data_description": {
           "battery_soc_sensor": "Sensor that reports battery state of charge in percent (0–100). Example: sensor.solarman_battery_soc",
           "battery_power_sensor": "Sensor for battery power in W (positive = discharge). Example: sensor.solarman_battery_power",
           "solar_production_sensor": "Sensor for solar production power in W. Example: sensor.solar_production_power",
           "house_consumption_sensor": "Sensor for total house consumption in W. Example: sensor.house_power",
-          "consumer_switches": "Switches or input booleans for heavy consumers (boiler, AC, pool, etc.). The order is the priority: first = turned on first when there is surplus, last = turned off first when saving. You can also add a group that contains these entities.",
-          "latitude": "Home latitude in degrees (-90 to 90). Used for solar forecast. Default is your Home Assistant home location.",
-          "longitude": "Home longitude in degrees (-180 to 180). Used for solar forecast.",
+          "consumer_switches": "Switches or input booleans for heavy consumers (boiler, AC, pool, etc.). The order is the priority: first = turned on first when there is surplus, last = turned off first when saving. You can also add a group that contains these entities."
+        }
+      },
+      "advanced": {
+        "title": "Advanced parameters",
+        "description": "Numeric settings and optional helpers. Latitude and longitude for the solar forecast are taken from your Home Assistant home location automatically (you can still correct them later by reconfiguring if needed). Defaults match the previous single-step setup.",
+        "data": {
+          "battery_capacity": "Battery capacity",
+          "baseline_consumption": "Baseline consumption",
+          "minimum_battery_reserve": "Minimum battery reserve",
+          "safety_forecast_factor": "Safety forecast factor",
+          "consumer_delay": "Consumer delay (normal mode ramp)",
+          "forecast_pr": "Forecast performance ratio",
+          "eod_battery_target": "End-of-day battery target",
+          "max_battery_current_amps": "Max battery current",
+          "discharge_limit_percent": "Discharge limit",
+          "discharge_limit_deadband_percent": "Discharge limit deadband",
+          "inverter_size_kw": "Inverter AC limit (kW, 0 = off)",
+          "battery_current_sensor": "Battery current sensor (optional)",
+          "lights_to_turn_off": "Devices to turn off in super-saving (optional)",
+          "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
+        },
+        "data_description": {
           "battery_capacity": "Battery capacity in kWh. Example: 20",
           "baseline_consumption": "Estimated baseline house consumption in kW (average when no heavy consumers). Example: 0.8",
           "minimum_battery_reserve": "Emergency reserve as percent of battery capacity (0–100). Not used for consumers. Example: 20",
           "safety_forecast_factor": "Safety factor for daily solar forecast in percent (10–100). 90 = use 90% of forecast. Example: 90",
           "consumer_delay": "Delay in minutes between turning off one consumer in Normal mode (LIFO). Wasting uses 1 min (learned) / 5 min (still learning) between actions.",
+          "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
           "eod_battery_target": "Target battery level at end of day in percent (0–100). Example: 90",
           "max_battery_current_amps": "Max battery current in A (for charge/discharge state). Example: 36",
           "discharge_limit_percent": "Discharge limit as percent of max current (0–100). Example: 80",
           "discharge_limit_deadband_percent": "Deadband in percent below discharge limit before allowing turn-on again. Example: 5",
+          "inverter_size_kw": "Optional AC output limit in kW for clipping checks. Use 0 to disable.",
           "battery_current_sensor": "Optional. Sensor for battery current in A (negative = charging). If not set, charge/discharge state uses power only.",
           "lights_to_turn_off": "Optional. Devices (lights, switches, fans, etc.) to turn off automatically in super energy saving mode (e.g. when battery very low).",
           "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off)."
@@ -66,32 +74,67 @@
           "string_1_tilt": "Panel tilt from horizontal in degrees (0–90). Example: 30",
           "string_1_azimuth": "Panel azimuth in degrees. Example: 0"
         }
-      },
-      "init": {
-        "title": "Options",
-        "data": {
-          "string_0_system_size_kw": "String 1 – capacity (kW)",
-          "string_0_tilt": "String 1 – tilt (°)",
-          "string_0_azimuth": "String 1 – azimuth (°)",
-          "string_1_system_size_kw": "String 2 – capacity (kW)",
-          "string_1_tilt": "String 2 – tilt (°)",
-          "string_1_azimuth": "String 2 – azimuth (°)"
-        },
-        "data_description": {
-          "string_0_system_size_kw": "Capacity in kW. Example: 5",
-          "string_0_tilt": "Tilt in degrees (0–90). Example: 30",
-          "string_0_azimuth": "Azimuth: 0=South, -90=East, 90=West. Example: 0",
-          "string_1_system_size_kw": "Capacity in kW. Example: 5",
-          "string_1_tilt": "Tilt in degrees. Example: 30",
-          "string_1_azimuth": "Azimuth in degrees. Example: 0"
-        }
       }
     },
     "options": {
       "step": {
         "init": {
-          "title": "Edit PV strings",
-          "description": "Change panel string parameters. Other settings (sensors, capacity, location, etc.) can be changed by removing and re-adding the integration.",
+          "title": "Sensors and consumers",
+          "description": "Update battery, solar, and house sensors and consumer switches. Next: numeric parameters, then PV strings.",
+          "data": {
+            "battery_soc_sensor": "Battery state of charge (SOC) sensor",
+            "battery_power_sensor": "Battery power sensor",
+            "solar_production_sensor": "Solar production power sensor",
+            "house_consumption_sensor": "House consumption power sensor",
+            "consumer_switches": "Consumer switches (heavy loads)"
+          },
+          "data_description": {
+            "battery_soc_sensor": "Sensor that reports battery state of charge in percent (0–100). Example: sensor.solarman_battery_soc",
+            "battery_power_sensor": "Sensor for battery power in W (positive = discharge). Example: sensor.solarman_battery_power",
+            "solar_production_sensor": "Sensor for solar production power in W. Example: sensor.solar_production_power",
+            "house_consumption_sensor": "Sensor for total house consumption in W. Example: sensor.house_power",
+            "consumer_switches": "Switches or input booleans for heavy consumers (boiler, AC, pool, etc.). The order is the priority: first = turned on first when there is surplus, last = turned off first when saving. You can also add a group that contains these entities."
+          }
+        },
+        "advanced": {
+          "title": "Advanced parameters",
+          "description": "Numeric settings and optional helpers. Latitude and longitude are kept from your existing configuration when valid; otherwise they fall back to the Home Assistant home location.",
+          "data": {
+            "battery_capacity": "Battery capacity",
+            "baseline_consumption": "Baseline consumption",
+            "minimum_battery_reserve": "Minimum battery reserve",
+            "safety_forecast_factor": "Safety forecast factor",
+            "consumer_delay": "Consumer delay (normal mode ramp)",
+            "forecast_pr": "Forecast performance ratio",
+            "eod_battery_target": "End-of-day battery target",
+            "max_battery_current_amps": "Max battery current",
+            "discharge_limit_percent": "Discharge limit",
+            "discharge_limit_deadband_percent": "Discharge limit deadband",
+            "inverter_size_kw": "Inverter AC limit (kW, 0 = off)",
+            "battery_current_sensor": "Battery current sensor (optional)",
+            "lights_to_turn_off": "Devices to turn off in super-saving (optional)",
+            "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
+          },
+          "data_description": {
+            "battery_capacity": "Battery capacity in kWh. Example: 20",
+            "baseline_consumption": "Estimated baseline house consumption in kW (average when no heavy consumers). Example: 0.8",
+            "minimum_battery_reserve": "Emergency reserve as percent of battery capacity (0–100). Not used for consumers. Example: 20",
+            "safety_forecast_factor": "Safety factor for daily solar forecast in percent (10–100). 90 = use 90% of forecast. Example: 90",
+            "consumer_delay": "Delay in minutes between turning off one consumer in Normal mode (LIFO). Wasting uses 1 min (learned) / 5 min (still learning) between actions.",
+            "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
+            "eod_battery_target": "Target battery level at end of day in percent (0–100). Example: 90",
+            "max_battery_current_amps": "Max battery current in A (for charge/discharge state). Example: 36",
+            "discharge_limit_percent": "Discharge limit as percent of max current (0–100). Example: 80",
+            "discharge_limit_deadband_percent": "Deadband in percent below discharge limit before allowing turn-on again. Example: 5",
+            "inverter_size_kw": "Optional AC output limit in kW for clipping checks. Use 0 to disable.",
+            "battery_current_sensor": "Optional. Sensor for battery current in A (negative = charging). If not set, charge/discharge state uses power only.",
+            "lights_to_turn_off": "Optional. Devices (lights, switches, fans, etc.) to turn off automatically in super energy saving mode (e.g. when battery very low).",
+            "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off)."
+          }
+        },
+        "strings": {
+          "title": "PV strings (panels) – installation angle, capacity",
+          "description": "Configure 2 PV strings for solar forecast. For each string: installed capacity (kW), installation angle – tilt (°), azimuth (°).",
           "data": {
             "string_0_system_size_kw": "String 1 – capacity (kW)",
             "string_0_tilt": "String 1 – tilt (°)",
@@ -101,12 +144,12 @@
             "string_1_azimuth": "String 2 – azimuth (°)"
           },
           "data_description": {
-            "string_0_system_size_kw": "Capacity in kW. Example: 5",
-            "string_0_tilt": "Tilt in degrees (0–90). Example: 30",
-            "string_0_azimuth": "Azimuth: 0=South, -90=East, 90=West. Example: 0",
-            "string_1_system_size_kw": "Capacity in kW. Example: 5",
-            "string_1_tilt": "Tilt in degrees. Example: 30",
-            "string_1_azimuth": "Azimuth in degrees. Example: 0"
+            "string_0_system_size_kw": "Installed capacity of first string in kW. Example: 5",
+            "string_0_tilt": "Panel tilt from horizontal in degrees (0–90). Example: 30",
+            "string_0_azimuth": "Panel azimuth: 0 = South, -90 = East, 90 = West, ±180 = North. Example: 0",
+            "string_1_system_size_kw": "Installed capacity of second string in kW. Example: 5",
+            "string_1_tilt": "Panel tilt from horizontal in degrees (0–90). Example: 30",
+            "string_1_azimuth": "Panel azimuth in degrees. Example: 0"
           }
         }
       }

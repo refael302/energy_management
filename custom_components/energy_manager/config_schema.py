@@ -101,69 +101,20 @@ def _home_lat_lon(hass: HomeAssistant) -> tuple[float, float]:
         return DEFAULT_LATITUDE, DEFAULT_LONGITUDE
 
 
-def main_params_schema_user(hass: HomeAssistant) -> vol.Schema:
-    """Initial config flow step: sensors and numeric params (no budget options)."""
-    lat, lon = _home_lat_lon(hass)
-    return vol.Schema(
-        {
-            vol.Required(CONF_BATTERY_SOC_SENSOR): battery_sensor_selector(),
-            vol.Required(CONF_BATTERY_POWER_SENSOR): sensor_selector(),
-            vol.Required(CONF_SOLAR_PRODUCTION_SENSOR): sensor_selector(),
-            vol.Required(CONF_HOUSE_CONSUMPTION_SENSOR): sensor_selector(),
-            vol.Required(CONF_CONSUMER_SWITCHES): consumer_entity_selector(),
-            vol.Required(CONF_LATITUDE, default=lat): vol.Coerce(float),
-            vol.Required(CONF_LONGITUDE, default=lon): vol.Coerce(float),
-            vol.Required(
-                CONF_BATTERY_CAPACITY, default=DEFAULT_BATTERY_CAPACITY
-            ): vol.Coerce(float),
-            vol.Required(
-                CONF_BASELINE_CONSUMPTION, default=DEFAULT_BASELINE_CONSUMPTION
-            ): vol.Coerce(float),
-            vol.Required(
-                CONF_MINIMUM_BATTERY_RESERVE, default=DEFAULT_MINIMUM_BATTERY_RESERVE
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_SAFETY_FORECAST_FACTOR, default=DEFAULT_SAFETY_FORECAST_FACTOR
-            ): vol.Coerce(int),
-            vol.Required(CONF_CONSUMER_DELAY, default=DEFAULT_CONSUMER_DELAY): vol.Coerce(
-                int
-            ),
-            vol.Required(CONF_FORECAST_PR, default=DEFAULT_FORECAST_PR): vol.Coerce(float),
-            vol.Required(
-                CONF_EOD_BATTERY_TARGET, default=DEFAULT_EOD_BATTERY_TARGET
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_MAX_BATTERY_CURRENT_AMPS, default=DEFAULT_MAX_BATTERY_CURRENT_AMPS
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_DISCHARGE_LIMIT_PERCENT, default=DEFAULT_DISCHARGE_LIMIT_PERCENT
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-                default=DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-            ): vol.Coerce(int),
-            vol.Optional(
-                CONF_INVERTER_SIZE_KW, default=DEFAULT_INVERTER_SIZE_KW
-            ): vol.Coerce(float),
-            vol.Optional(CONF_BATTERY_CURRENT_SENSOR): sensor_selector(),
-            vol.Optional(CONF_LIGHTS_TO_TURN_OFF): super_saving_entity_selector(),
-            vol.Optional(CONF_RECOMMENDED_TO_TURN_OFF): super_saving_entity_selector(),
-        }
-    )
-
-
-def main_params_schema_options(
-    hass: HomeAssistant, merged: dict[str, Any]
+def main_params_schema_minimal(
+    merged: dict[str, Any] | None = None,
 ) -> vol.Schema:
-    """Options flow step: same fields as initial user step (merged defaults)."""
-    try:
-        lat_d = merged.get(CONF_LATITUDE, hass.config.latitude)
-        lon_d = merged.get(CONF_LONGITUDE, hass.config.longitude)
-        lat_d = float(lat_d)
-        lon_d = float(lon_d)
-    except (TypeError, ValueError):
-        lat_d, lon_d = _home_lat_lon(hass)
-
+    """Step 1: battery/house/solar sensors and consumer switches only."""
+    if merged is None:
+        return vol.Schema(
+            {
+                vol.Required(CONF_BATTERY_SOC_SENSOR): battery_sensor_selector(),
+                vol.Required(CONF_BATTERY_POWER_SENSOR): sensor_selector(),
+                vol.Required(CONF_SOLAR_PRODUCTION_SENSOR): sensor_selector(),
+                vol.Required(CONF_HOUSE_CONSUMPTION_SENSOR): sensor_selector(),
+                vol.Required(CONF_CONSUMER_SWITCHES): consumer_entity_selector(),
+            }
+        )
     return vol.Schema(
         {
             vol.Required(
@@ -186,81 +137,87 @@ def main_params_schema_options(
                 CONF_CONSUMER_SWITCHES,
                 default=list_or_empty(merged.get(CONF_CONSUMER_SWITCHES)),
             ): consumer_entity_selector(),
-            vol.Required(CONF_LATITUDE, default=lat_d): vol.Coerce(float),
-            vol.Required(CONF_LONGITUDE, default=lon_d): vol.Coerce(float),
+        }
+    )
+
+
+def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
+    """Step 2: numeric params and optional entities. Lat/lon are set in the flow."""
+    return vol.Schema(
+        {
             vol.Required(
                 CONF_BATTERY_CAPACITY,
-                default=merged.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY),
+                default=base.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY),
             ): vol.Coerce(float),
             vol.Required(
                 CONF_BASELINE_CONSUMPTION,
-                default=merged.get(CONF_BASELINE_CONSUMPTION, DEFAULT_BASELINE_CONSUMPTION),
+                default=base.get(CONF_BASELINE_CONSUMPTION, DEFAULT_BASELINE_CONSUMPTION),
             ): vol.Coerce(float),
             vol.Required(
                 CONF_MINIMUM_BATTERY_RESERVE,
-                default=merged.get(
+                default=base.get(
                     CONF_MINIMUM_BATTERY_RESERVE, DEFAULT_MINIMUM_BATTERY_RESERVE
                 ),
             ): vol.Coerce(int),
             vol.Required(
                 CONF_SAFETY_FORECAST_FACTOR,
-                default=merged.get(
+                default=base.get(
                     CONF_SAFETY_FORECAST_FACTOR, DEFAULT_SAFETY_FORECAST_FACTOR
                 ),
             ): vol.Coerce(int),
             vol.Required(
-                CONF_FORECAST_PR,
-                default=merged.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR),
-            ): vol.Coerce(float),
-            vol.Required(
                 CONF_CONSUMER_DELAY,
-                default=merged.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY),
+                default=base.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY),
             ): vol.Coerce(int),
             vol.Required(
+                CONF_FORECAST_PR,
+                default=base.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR),
+            ): vol.Coerce(float),
+            vol.Required(
                 CONF_EOD_BATTERY_TARGET,
-                default=merged.get(CONF_EOD_BATTERY_TARGET, DEFAULT_EOD_BATTERY_TARGET),
+                default=base.get(CONF_EOD_BATTERY_TARGET, DEFAULT_EOD_BATTERY_TARGET),
             ): vol.Coerce(int),
             vol.Required(
                 CONF_MAX_BATTERY_CURRENT_AMPS,
-                default=merged.get(
+                default=base.get(
                     CONF_MAX_BATTERY_CURRENT_AMPS, DEFAULT_MAX_BATTERY_CURRENT_AMPS
                 ),
             ): vol.Coerce(int),
             vol.Required(
                 CONF_DISCHARGE_LIMIT_PERCENT,
-                default=merged.get(
+                default=base.get(
                     CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT
                 ),
             ): vol.Coerce(int),
             vol.Required(
                 CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-                default=merged.get(
+                default=base.get(
                     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
                     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
                 ),
             ): vol.Coerce(int),
             vol.Optional(
                 CONF_INVERTER_SIZE_KW,
-                default=merged.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW),
+                default=base.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW),
             ): vol.Coerce(float),
             vol.Optional(
                 CONF_BATTERY_CURRENT_SENSOR,
-                default=merged.get(CONF_BATTERY_CURRENT_SENSOR) or "",
+                default=base.get(CONF_BATTERY_CURRENT_SENSOR) or "",
             ): sensor_selector(),
             vol.Optional(
                 CONF_LIGHTS_TO_TURN_OFF,
-                default=list_or_empty(merged.get(CONF_LIGHTS_TO_TURN_OFF)),
+                default=list_or_empty(base.get(CONF_LIGHTS_TO_TURN_OFF)),
             ): super_saving_entity_selector(),
             vol.Optional(
                 CONF_RECOMMENDED_TO_TURN_OFF,
-                default=list_or_empty(merged.get(CONF_RECOMMENDED_TO_TURN_OFF)),
+                default=list_or_empty(base.get(CONF_RECOMMENDED_TO_TURN_OFF)),
             ): super_saving_entity_selector(),
         }
     )
 
 
 def strings_schema_install_defaults() -> vol.Schema:
-    """PV strings step right after initial user step (defaults only)."""
+    """PV strings step after advanced params (defaults only)."""
     return vol.Schema(
         {
             vol.Required(

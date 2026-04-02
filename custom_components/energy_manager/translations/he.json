@@ -2,46 +2,54 @@
   "config": {
     "step": {
       "user": {
-        "title": "חיישנים ופרמטרים",
-        "description": "בחר חיישנים והגדר פרמטרי אנרגיה. בשלב הבא תגדיר 2 סטרינגים סולאריים: זווית התקנה (tilt), אזימוט וכמות מותקנת (kW) לכל סטרינג. ניתן לשנות בהמשך מהאפשרויות של האינטגרציה.",
+        "title": "חיישנים וצרכנים",
+        "description": "בחר חיישני סוללה, סולאר ובית ומתגי צרכנים. בשלב הבא פרמטרים מספריים (ברירות המחדל מתאימות לרוב), ואז שני סטרינגים סולאריים לתחזית.",
         "data": {
           "battery_soc_sensor": "חיישן מצב טעינת סוללה (SOC)",
           "battery_power_sensor": "חיישן הספק סוללה",
           "solar_production_sensor": "חיישן ייצור סולארי",
           "house_consumption_sensor": "חיישן צריכת בית",
-          "consumer_switches": "מתגי צרכנים (עומסים כבדים)",
-          "latitude": "קו רוחב",
-          "longitude": "קו אורך",
-          "battery_capacity": "קיבולת סוללה",
-          "baseline_consumption": "צריכה בסיסית",
-          "minimum_battery_reserve": "רזרבה מינימלית לסוללה",
-          "safety_forecast_factor": "מקדם בטיחות לתחזית",
-          "consumer_delay": "השהיה במצב רגיל (כיבוי הדרגתי)",
-          "eod_battery_target": "יעד סוללה לסוף יום",
-          "max_battery_current_amps": "זרם סוללה מקסימלי",
-          "discharge_limit_percent": "סף פריקה",
-          "discharge_limit_deadband_percent": "אזור מת (deadband) לפריקה",
-          "battery_current_sensor": "חיישן זרם סוללה (אופציונלי)",
-          "lights_to_turn_off": "מכשירים לכיבוי במצב חיסכון קיצוני (אופציונלי)",
-          "recommended_to_turn_off": "המלצה לכבות כשהסוללה נמוכה (אופציונלי)"
+          "consumer_switches": "מתגי צרכנים (עומסים כבדים)"
         },
         "data_description": {
           "battery_soc_sensor": "חיישן שמציג אחוז טעינת סוללה (0–100). דוגמה: sensor.solarman_battery_soc",
           "battery_power_sensor": "חיישן הספק סוללה ב־W (חיובי = פריקה). דוגמה: sensor.solarman_battery_power",
           "solar_production_sensor": "חיישן הספק ייצור סולארי ב־W. דוגמה: sensor.solar_production_power",
           "house_consumption_sensor": "חיישן צריכת בית כוללת ב־W. דוגמה: sensor.house_power",
-          "consumer_switches": "מתגים או Input Boolean לצרכנים כבדים (דוד, מזגן, בריכה וכו'). הסדר = עדיפות: הראשון יודלק ראשון כשיש עודף, האחרון יכבה ראשון בחיסכון. אפשר גם לבחור קבוצה שמכילה את הישויות.",
-          "latitude": "קו רוחב הבית במעלות (-90 עד 90). משמש לתחזית שמש. ברירת מחדל = מיקום הבית של Home Assistant.",
-          "longitude": "קו אורך הבית במעלות (-180 עד 180). משמש לתחזית שמש.",
+          "consumer_switches": "מתגים או Input Boolean לצרכנים כבדים (דוד, מזגן, בריכה וכו'). הסדר = עדיפות: הראשון יודלק ראשון כשיש עודף, האחרון יכבה ראשון בחיסכון. אפשר גם לבחור קבוצה שמכילה את הישויות."
+        }
+      },
+      "advanced": {
+        "title": "פרמטרים מתקדמים",
+        "description": "הגדרות מספריות ואופציות. קווי רוחב ואורך לתחזית שמש נלקחים אוטומטית ממיקום הבית ב־Home Assistant (ניתן לתקן בהמשך דרך הגדרה מחדש). ברירות המחדל זהות לשלב ההתקנה היחיד שהיה קודם.",
+        "data": {
+          "battery_capacity": "קיבולת סוללה",
+          "baseline_consumption": "צריכה בסיסית",
+          "minimum_battery_reserve": "רזרבה מינימלית לסוללה",
+          "safety_forecast_factor": "מקדם בטיחות לתחזית",
+          "consumer_delay": "השהיה במצב רגיל (כיבוי הדרגתי)",
+          "forecast_pr": "מקדם ביצועים לתחזית (PR)",
+          "eod_battery_target": "יעד סוללה לסוף יום",
+          "max_battery_current_amps": "זרם סוללה מקסימלי",
+          "discharge_limit_percent": "סף פריקה",
+          "discharge_limit_deadband_percent": "אזור מת (deadband) לפריקה",
+          "inverter_size_kw": "מגבלת ממיר AC (kW, 0 = כבוי)",
+          "battery_current_sensor": "חיישן זרם סוללה (אופציונלי)",
+          "lights_to_turn_off": "מכשירים לכיבוי במצב חיסכון קיצוני (אופציונלי)",
+          "recommended_to_turn_off": "המלצה לכבות כשהסוללה נמוכה (אופציונלי)"
+        },
+        "data_description": {
           "battery_capacity": "קיבולת סוללה ב־kWh. דוגמה: 20",
           "baseline_consumption": "צריכת בית משוערת ב־kW (ממוצע בלי צרכנים כבדים). דוגמה: 0.8",
           "minimum_battery_reserve": "רזרבה לחירום כאחוז מקיבולת הסוללה (0–100). לא משמשת לצרכנים. דוגמה: 20",
           "safety_forecast_factor": "מקדם בטיחות לתחזית יומית באחוזים (10–100). 90 = שימוש ב־90% מהתחזית. דוגמה: 90",
           "consumer_delay": "דקות בין כיבוי צרכן אחד במצב רגיל (LIFO). במצב בזבוז: דקה בין מלומדים, 5 דק בין למידות.",
+          "forecast_pr": "מקדם המוחל על התחזית (בדרך כלל 0–1). דוגמה: 0.85",
           "eod_battery_target": "יעד רמת סוללה בסוף היום באחוזים (0–100). דוגמה: 90",
           "max_battery_current_amps": "זרם סוללה מקסימלי ב־A (למצב טעינה/פריקה). דוגמה: 36",
           "discharge_limit_percent": "סף פריקה כאחוז מהזרם המקסימלי (0–100). דוגמה: 80",
           "discharge_limit_deadband_percent": "אזור מת באחוזים מתחת לסף הפריקה לפני הפעלה מחדש. דוגמה: 5",
+          "inverter_size_kw": "אופציונלי. מגבלת הספק יציאה AC ב־kW לבדיקות קליפינג. 0 לכיבוי.",
           "battery_current_sensor": "אופציונלי. חיישן זרם סוללה ב־A (שלילי = טעינה). אם לא מוגדר, מצב טעינה/פריקה מחושב מההספק בלבד.",
           "lights_to_turn_off": "אופציונלי. מכשירים (תאורות, מתגים, מאווררים וכו') לכיבוי אוטומטי במצב חיסכון קיצוני (למשל כשהסוללה נמוכה מאוד).",
           "recommended_to_turn_off": "אופציונלי. מכשירי ביניים: כשהסוללה נמוכה והתחזית היומית חסרה, האינטגרציה ממליצה לכבות אותם (חיישן מציג את הרשימה; אין כיבוי אוטומטי)."
@@ -66,32 +74,81 @@
           "string_1_tilt": "זווית התקנה במעלות (0–90). דוגמה: 30",
           "string_1_azimuth": "אזימוט במעלות. דוגמה: 0"
         }
-      },
-      "init": {
-        "title": "אפשרויות",
-        "data": {},
-        "data_description": {}
       }
     },
     "options": {
       "step": {
         "init": {
-          "title": "עריכת סטרינגים סולאריים",
-          "description": "שינוי פרמטרי הסטרינגים. שאר ההגדרות (חיישנים, קיבולת, מיקום וכו') ניתן לשנות על ידי הסרה והוספה מחדש של האינטגרציה.",
+          "title": "חיישנים וצרכנים",
+          "description": "עדכון חיישני סוללה, סולאר ובית ומתגי צרכנים. אחר כך פרמטרים מספריים ואז סטרינגים סולאריים.",
           "data": {
-            "string_0_system_size_kw": "סטרינג 1 – קיבולת (kW)",
-            "string_0_tilt": "סטרינג 1 – הטיה (°)",
+            "battery_soc_sensor": "חיישן מצב טעינת סוללה (SOC)",
+            "battery_power_sensor": "חיישן הספק סוללה",
+            "solar_production_sensor": "חיישן ייצור סולארי",
+            "house_consumption_sensor": "חיישן צריכת בית",
+            "consumer_switches": "מתגי צרכנים (עומסים כבדים)"
+          },
+          "data_description": {
+            "battery_soc_sensor": "חיישן שמציג אחוז טעינת סוללה (0–100). דוגמה: sensor.solarman_battery_soc",
+            "battery_power_sensor": "חיישן הספק סוללה ב־W (חיובי = פריקה). דוגמה: sensor.solarman_battery_power",
+            "solar_production_sensor": "חיישן הספק ייצור סולארי ב־W. דוגמה: sensor.solar_production_power",
+            "house_consumption_sensor": "חיישן צריכת בית כוללת ב־W. דוגמה: sensor.house_power",
+            "consumer_switches": "מתגים או Input Boolean לצרכנים כבדים (דוד, מזגן, בריכה וכו'). הסדר = עדיפות: הראשון יודלק ראשון כשיש עודף, האחרון יכבה ראשון בחיסכון. אפשר גם לבחור קבוצה שמכילה את הישויות."
+          }
+        },
+        "advanced": {
+          "title": "פרמטרים מתקדמים",
+          "description": "הגדרות מספריות ואופציות. קווי רוחב ואורך נשמרים מההגדרות הקיימות כשהם תקינים; אחרת נעשה שימוש במיקום הבית ב־Home Assistant.",
+          "data": {
+            "battery_capacity": "קיבולת סוללה",
+            "baseline_consumption": "צריכה בסיסית",
+            "minimum_battery_reserve": "רזרבה מינימלית לסוללה",
+            "safety_forecast_factor": "מקדם בטיחות לתחזית",
+            "consumer_delay": "השהיה במצב רגיל (כיבוי הדרגתי)",
+            "forecast_pr": "מקדם ביצועים לתחזית (PR)",
+            "eod_battery_target": "יעד סוללה לסוף יום",
+            "max_battery_current_amps": "זרם סוללה מקסימלי",
+            "discharge_limit_percent": "סף פריקה",
+            "discharge_limit_deadband_percent": "אזור מת (deadband) לפריקה",
+            "inverter_size_kw": "מגבלת ממיר AC (kW, 0 = כבוי)",
+            "battery_current_sensor": "חיישן זרם סוללה (אופציונלי)",
+            "lights_to_turn_off": "מכשירים לכיבוי במצב חיסכון קיצוני (אופציונלי)",
+            "recommended_to_turn_off": "המלצה לכבות כשהסוללה נמוכה (אופציונלי)"
+          },
+          "data_description": {
+            "battery_capacity": "קיבולת סוללה ב־kWh. דוגמה: 20",
+            "baseline_consumption": "צריכת בית משוערת ב־kW (ממוצע בלי צרכנים כבדים). דוגמה: 0.8",
+            "minimum_battery_reserve": "רזרבה לחירום כאחוז מקיבולת הסוללה (0–100). לא משמשת לצרכנים. דוגמה: 20",
+            "safety_forecast_factor": "מקדם בטיחות לתחזית יומית באחוזים (10–100). 90 = שימוש ב־90% מהתחזית. דוגמה: 90",
+            "consumer_delay": "דקות בין כיבוי צרכן אחד במצב רגיל (LIFO). במצב בזבוז: דקה בין מלומדים, 5 דק בין למידות.",
+            "forecast_pr": "מקדם המוחל על התחזית (בדרך כלל 0–1). דוגמה: 0.85",
+            "eod_battery_target": "יעד רמת סוללה בסוף היום באחוזים (0–100). דוגמה: 90",
+            "max_battery_current_amps": "זרם סוללה מקסימלי ב־A (למצב טעינה/פריקה). דוגמה: 36",
+            "discharge_limit_percent": "סף פריקה כאחוז מהזרם המקסימלי (0–100). דוגמה: 80",
+            "discharge_limit_deadband_percent": "אזור מת באחוזים מתחת לסף הפריקה לפני הפעלה מחדש. דוגמה: 5",
+            "inverter_size_kw": "אופציונלי. מגבלת הספק יציאה AC ב־kW לבדיקות קליפינג. 0 לכיבוי.",
+            "battery_current_sensor": "אופציונלי. חיישן זרם סוללה ב־A (שלילי = טעינה). אם לא מוגדר, מצב טעינה/פריקה מחושב מההספק בלבד.",
+            "lights_to_turn_off": "אופציונלי. מכשירים (תאורות, מתגים, מאווררים וכו') לכיבוי אוטומטי במצב חיסכון קיצוני (למשל כשהסוללה נמוכה מאוד).",
+            "recommended_to_turn_off": "אופציונלי. מכשירי ביניים: כשהסוללה נמוכה והתחזית היומית חסרה, האינטגרציה ממליצה לכבות אותם (חיישן מציג את הרשימה; אין כיבוי אוטומטי)."
+          }
+        },
+        "strings": {
+          "title": "סטרינגים סולאריים – זווית התקנה, כמות מותקנת",
+          "description": "הגדרת 2 סטרינגים לתחזית שמש. לכל סטרינג: כמות מותקנת (kW), זווית התקנה – tilt (°), אזימוט (°).",
+          "data": {
+            "string_0_system_size_kw": "סטרינג 1 – כמות מותקנת (kW)",
+            "string_0_tilt": "סטרינג 1 – זווית התקנה / הטיה (°)",
             "string_0_azimuth": "סטרינג 1 – אזימוט (°)",
-            "string_1_system_size_kw": "סטרינג 2 – קיבולת (kW)",
-            "string_1_tilt": "סטרינג 2 – הטיה (°)",
+            "string_1_system_size_kw": "סטרינג 2 – כמות מותקנת (kW)",
+            "string_1_tilt": "סטרינג 2 – זווית התקנה / הטיה (°)",
             "string_1_azimuth": "סטרינג 2 – אזימוט (°)"
           },
           "data_description": {
-            "string_0_system_size_kw": "קיבולת ב־kW. דוגמה: 5",
-            "string_0_tilt": "הטיה במעלות (0–90). דוגמה: 30",
-            "string_0_azimuth": "אזימוט: 0=דרום, -90=מזרח, 90=מערב. דוגמה: 0",
-            "string_1_system_size_kw": "קיבולת ב־kW. דוגמה: 5",
-            "string_1_tilt": "הטיה במעלות. דוגמה: 30",
+            "string_0_system_size_kw": "כמות מותקנת (קיבולת) של הסטרינג הראשון ב־kW. דוגמה: 5",
+            "string_0_tilt": "זווית התקנה – הטיה מאוזן במעלות (0–90). דוגמה: 30",
+            "string_0_azimuth": "אזימוט: 0 = דרום, -90 = מזרח, 90 = מערב, ±180 = צפון. דוגמה: 0",
+            "string_1_system_size_kw": "כמות מותקנת של הסטרינג השני ב־kW. דוגמה: 5",
+            "string_1_tilt": "זווית התקנה במעלות (0–90). דוגמה: 30",
             "string_1_azimuth": "אזימוט במעלות. דוגמה: 0"
           }
         }
