@@ -2,146 +2,31 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import selector
 
+from .config_schema import (
+    main_params_schema_options,
+    main_params_schema_user,
+    strings_schema_from_config,
+    strings_schema_install_defaults,
+)
 from .const import (
     CONF_AZIMUTH,
-    CONF_BASELINE_CONSUMPTION,
-    CONF_BATTERY_CAPACITY,
     CONF_BATTERY_CURRENT_SENSOR,
-    CONF_BATTERY_POWER_SENSOR,
-    CONF_BATTERY_SOC_SENSOR,
-    CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-    CONF_CONSUMER_DELAY,
-    CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
-    CONF_CONSUMER_SWITCHES,
-    CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-    CONF_DISCHARGE_LIMIT_PERCENT,
-    CONF_EOD_BATTERY_TARGET,
-    CONF_FORECAST_PR,
-    CONF_HOUSE_CONSUMPTION_SENSOR,
-    CONF_INVERTER_SIZE_KW,
     CONF_LIGHTS_TO_TURN_OFF,
     CONF_RECOMMENDED_TO_TURN_OFF,
-    CONF_MAX_BATTERY_CURRENT_AMPS,
-    CONF_MINIMUM_BATTERY_RESERVE,
-    CONF_SAFETY_FORECAST_FACTOR,
-    CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_STRINGS,
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
-    DEFAULT_BASELINE_CONSUMPTION,
-    DEFAULT_BATTERY_CAPACITY,
-    DEFAULT_CONSUMER_DELAY,
-    DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-    DEFAULT_DISCHARGE_LIMIT_PERCENT,
-    DEFAULT_EOD_BATTERY_TARGET,
-    DEFAULT_FORECAST_PR,
-    DEFAULT_INVERTER_SIZE_KW,
-    DEFAULT_LATITUDE,
-    DEFAULT_LONGITUDE,
-    DEFAULT_MAX_BATTERY_CURRENT_AMPS,
-    DEFAULT_MINIMUM_BATTERY_RESERVE,
-    DEFAULT_SAFETY_FORECAST_FACTOR,
+    DEFAULT_AZIMUTH,
     DEFAULT_SYSTEM_SIZE_KW,
     DEFAULT_TILT,
-    DEFAULT_AZIMUTH,
     DOMAIN,
-    MAX_STRINGS,
 )
-
-_LOGGER = logging.getLogger(__name__)
-
-
-def _sensor_selector() -> selector.Selector:
-    return selector.EntitySelector(
-        selector.EntityFilterSelectorConfig(domain=["sensor"])
-    )
-
-
-def _power_sensor_selector() -> selector.Selector:
-    return selector.EntitySelector(
-        selector.EntityFilterSelectorConfig(domain=["sensor"])
-    )
-
-
-def _battery_sensor_selector() -> selector.Selector:
-    return selector.EntitySelector(
-        selector.EntityFilterSelectorConfig(domain=["sensor"])
-    )
-
-
-def _data_schema_user(hass: HomeAssistant) -> vol.Schema:
-    """Build user step schema with defaults from HA config (e.g. home location)."""
-    try:
-        lat = float(hass.config.latitude)
-        lon = float(hass.config.longitude)
-    except (TypeError, ValueError):
-        lat, lon = DEFAULT_LATITUDE, DEFAULT_LONGITUDE
-    return vol.Schema(
-        {
-            vol.Required(CONF_BATTERY_SOC_SENSOR): _battery_sensor_selector(),
-            vol.Required(CONF_BATTERY_POWER_SENSOR): _power_sensor_selector(),
-            vol.Required(CONF_SOLAR_PRODUCTION_SENSOR): _power_sensor_selector(),
-            vol.Required(CONF_HOUSE_CONSUMPTION_SENSOR): _power_sensor_selector(),
-            vol.Required(CONF_CONSUMER_SWITCHES): selector.EntitySelector(
-                selector.EntityFilterSelectorConfig(
-                    domain=["switch", "input_boolean"], multiple=True
-                ),
-            ),
-            vol.Required(CONF_LATITUDE, default=lat): vol.Coerce(float),
-            vol.Required(CONF_LONGITUDE, default=lon): vol.Coerce(float),
-            vol.Required(CONF_BATTERY_CAPACITY, default=DEFAULT_BATTERY_CAPACITY): vol.Coerce(float),
-            vol.Required(CONF_BASELINE_CONSUMPTION, default=DEFAULT_BASELINE_CONSUMPTION): vol.Coerce(float),
-            vol.Required(CONF_MINIMUM_BATTERY_RESERVE, default=DEFAULT_MINIMUM_BATTERY_RESERVE): vol.Coerce(int),
-            vol.Required(CONF_SAFETY_FORECAST_FACTOR, default=DEFAULT_SAFETY_FORECAST_FACTOR): vol.Coerce(int),
-            vol.Required(CONF_CONSUMER_DELAY, default=DEFAULT_CONSUMER_DELAY): vol.Coerce(int),
-            vol.Required(CONF_FORECAST_PR, default=DEFAULT_FORECAST_PR): vol.Coerce(float),
-            vol.Required(CONF_EOD_BATTERY_TARGET, default=DEFAULT_EOD_BATTERY_TARGET): vol.Coerce(int),
-            vol.Required(CONF_MAX_BATTERY_CURRENT_AMPS, default=DEFAULT_MAX_BATTERY_CURRENT_AMPS): vol.Coerce(int),
-            vol.Required(CONF_DISCHARGE_LIMIT_PERCENT, default=DEFAULT_DISCHARGE_LIMIT_PERCENT): vol.Coerce(int),
-            vol.Required(
-                CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, default=DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT
-            ): vol.Coerce(int),
-            vol.Optional(
-                CONF_INVERTER_SIZE_KW, default=DEFAULT_INVERTER_SIZE_KW
-            ): vol.Coerce(float),
-            vol.Optional(CONF_BATTERY_CURRENT_SENSOR): _sensor_selector(),
-            vol.Optional(CONF_LIGHTS_TO_TURN_OFF): selector.EntitySelector(
-                selector.EntityFilterSelectorConfig(
-                    domain=["light", "switch", "input_boolean", "fan"],
-                    multiple=True,
-                ),
-            ),
-            vol.Optional(CONF_RECOMMENDED_TO_TURN_OFF): selector.EntitySelector(
-                selector.EntityFilterSelectorConfig(
-                    domain=["light", "switch", "input_boolean", "fan"],
-                    multiple=True,
-                ),
-            ),
-        }
-    )
-
-
-def _strings_data_schema() -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Required("string_0_system_size_kw", default=DEFAULT_SYSTEM_SIZE_KW): vol.Coerce(float),
-            vol.Required("string_0_tilt", default=DEFAULT_TILT): vol.Coerce(float),
-            vol.Required("string_0_azimuth", default=DEFAULT_AZIMUTH): vol.Coerce(float),
-            vol.Required("string_1_system_size_kw", default=DEFAULT_SYSTEM_SIZE_KW): vol.Coerce(float),
-            vol.Required("string_1_tilt", default=DEFAULT_TILT): vol.Coerce(float),
-            vol.Required("string_1_azimuth", default=DEFAULT_AZIMUTH): vol.Coerce(float),
-        }
-    )
 
 
 class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -170,7 +55,7 @@ class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_strings()
         return self.async_show_form(
             step_id="user",
-            data_schema=_data_schema_user(self.hass),
+            data_schema=main_params_schema_user(self.hass),
         )
 
     async def async_step_strings(
@@ -193,7 +78,7 @@ class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data = {**self._user_input, CONF_STRINGS: strings}
             return self.async_create_entry(title="Energy Manager", data=data)
         return self.async_show_form(
-            step_id="strings", data_schema=_strings_data_schema()
+            step_id="strings", data_schema=strings_schema_install_defaults()
         )
 
     @staticmethod
@@ -203,140 +88,6 @@ class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.OptionsFlow:
         """Get the options flow for this handler."""
         return EnergyManagerOptionsFlow(config_entry)
-
-
-def _options_schema_main(hass: HomeAssistant, merged: dict[str, Any]) -> vol.Schema:
-    """Build options form schema for main params (sensors, devices, numbers)."""
-    def _list_or_empty(val: Any) -> list[str]:
-        if val is None:
-            return []
-        if isinstance(val, list):
-            return val
-        return [val] if val else []
-
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_BATTERY_SOC_SENSOR,
-                default=merged.get(CONF_BATTERY_SOC_SENSOR) or "",
-            ): _battery_sensor_selector(),
-            vol.Required(
-                CONF_BATTERY_POWER_SENSOR,
-                default=merged.get(CONF_BATTERY_POWER_SENSOR) or "",
-            ): _power_sensor_selector(),
-            vol.Required(
-                CONF_SOLAR_PRODUCTION_SENSOR,
-                default=merged.get(CONF_SOLAR_PRODUCTION_SENSOR) or "",
-            ): _power_sensor_selector(),
-            vol.Required(
-                CONF_HOUSE_CONSUMPTION_SENSOR,
-                default=merged.get(CONF_HOUSE_CONSUMPTION_SENSOR) or "",
-            ): _power_sensor_selector(),
-            vol.Required(
-                CONF_CONSUMER_SWITCHES,
-                default=_list_or_empty(merged.get(CONF_CONSUMER_SWITCHES)),
-            ): selector.EntitySelector(
-                selector.EntityFilterSelectorConfig(
-                    domain=["switch", "input_boolean"], multiple=True
-                ),
-            ),
-            vol.Required(
-                CONF_LATITUDE,
-                default=merged.get(CONF_LATITUDE, hass.config.latitude),
-            ): vol.Coerce(float),
-            vol.Required(
-                CONF_LONGITUDE,
-                default=merged.get(CONF_LONGITUDE, hass.config.longitude),
-            ): vol.Coerce(float),
-            vol.Required(
-                CONF_BATTERY_CAPACITY,
-                default=merged.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY),
-            ): vol.Coerce(float),
-            vol.Required(
-                CONF_BASELINE_CONSUMPTION,
-                default=merged.get(CONF_BASELINE_CONSUMPTION, DEFAULT_BASELINE_CONSUMPTION),
-            ): vol.Coerce(float),
-            vol.Required(
-                CONF_MINIMUM_BATTERY_RESERVE,
-                default=merged.get(CONF_MINIMUM_BATTERY_RESERVE, DEFAULT_MINIMUM_BATTERY_RESERVE),
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_SAFETY_FORECAST_FACTOR,
-                default=merged.get(CONF_SAFETY_FORECAST_FACTOR, DEFAULT_SAFETY_FORECAST_FACTOR),
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_FORECAST_PR,
-                default=merged.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR),
-            ): vol.Coerce(float),
-            vol.Required(
-                CONF_CONSUMER_DELAY,
-                default=merged.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY),
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_EOD_BATTERY_TARGET,
-                default=merged.get(CONF_EOD_BATTERY_TARGET, DEFAULT_EOD_BATTERY_TARGET),
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_MAX_BATTERY_CURRENT_AMPS,
-                default=merged.get(CONF_MAX_BATTERY_CURRENT_AMPS, DEFAULT_MAX_BATTERY_CURRENT_AMPS),
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_DISCHARGE_LIMIT_PERCENT,
-                default=merged.get(CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT),
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-                default=merged.get(
-                    CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-                    DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-                ),
-            ): vol.Coerce(int),
-            vol.Optional(
-                CONF_INVERTER_SIZE_KW,
-                default=merged.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW),
-            ): vol.Coerce(float),
-            vol.Optional(
-                CONF_BATTERY_CURRENT_SENSOR,
-                default=merged.get(CONF_BATTERY_CURRENT_SENSOR) or "",
-            ): _sensor_selector(),
-            vol.Optional(
-                CONF_LIGHTS_TO_TURN_OFF,
-                default=_list_or_empty(merged.get(CONF_LIGHTS_TO_TURN_OFF)),
-            ): selector.EntitySelector(
-                selector.EntityFilterSelectorConfig(
-                    domain=["light", "switch", "input_boolean", "fan"],
-                    multiple=True,
-                ),
-            ),
-            vol.Optional(
-                CONF_RECOMMENDED_TO_TURN_OFF,
-                default=_list_or_empty(merged.get(CONF_RECOMMENDED_TO_TURN_OFF)),
-            ): selector.EntitySelector(
-                selector.EntityFilterSelectorConfig(
-                    domain=["light", "switch", "input_boolean", "fan"],
-                    multiple=True,
-                ),
-            ),
-            vol.Optional(
-                CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-                default=float(
-                    merged.get(
-                        CONF_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-                        DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-                    )
-                ),
-            ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=0.5)),
-            vol.Optional(
-                CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
-                default=float(
-                    merged.get(
-                        CONF_CONSUMER_DISCHARGE_RESERVE_RATIO,
-                        DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
-                    )
-                ),
-            ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=0.8)),
-        }
-    )
 
 
 class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
@@ -365,7 +116,7 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         merged = self._merged_config()
         return self.async_show_form(
             step_id="init",
-            data_schema=_options_schema_main(self.hass, merged),
+            data_schema=main_params_schema_options(self.hass, merged),
         )
 
     async def async_step_strings(
@@ -388,36 +139,20 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             data = {**self._options, CONF_STRINGS: strings}
             return self.async_create_entry(data=data)
         merged = self._merged_config()
-        strings = merged.get(CONF_STRINGS, [
-            {CONF_SYSTEM_SIZE_KW: DEFAULT_SYSTEM_SIZE_KW, CONF_TILT: DEFAULT_TILT, CONF_AZIMUTH: DEFAULT_AZIMUTH},
-            {CONF_SYSTEM_SIZE_KW: DEFAULT_SYSTEM_SIZE_KW, CONF_TILT: DEFAULT_TILT, CONF_AZIMUTH: DEFAULT_AZIMUTH},
-        ])
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    "string_0_system_size_kw",
-                    default=strings[0].get(CONF_SYSTEM_SIZE_KW, DEFAULT_SYSTEM_SIZE_KW),
-                ): vol.Coerce(float),
-                vol.Required(
-                    "string_0_tilt",
-                    default=strings[0].get(CONF_TILT, DEFAULT_TILT),
-                ): vol.Coerce(float),
-                vol.Required(
-                    "string_0_azimuth",
-                    default=strings[0].get(CONF_AZIMUTH, DEFAULT_AZIMUTH),
-                ): vol.Coerce(float),
-                vol.Required(
-                    "string_1_system_size_kw",
-                    default=strings[1].get(CONF_SYSTEM_SIZE_KW, DEFAULT_SYSTEM_SIZE_KW),
-                ): vol.Coerce(float),
-                vol.Required(
-                    "string_1_tilt",
-                    default=strings[1].get(CONF_TILT, DEFAULT_TILT),
-                ): vol.Coerce(float),
-                vol.Required(
-                    "string_1_azimuth",
-                    default=strings[1].get(CONF_AZIMUTH, DEFAULT_AZIMUTH),
-                ): vol.Coerce(float),
-            }
+        strings = merged.get(
+            CONF_STRINGS,
+            [
+                {
+                    CONF_SYSTEM_SIZE_KW: DEFAULT_SYSTEM_SIZE_KW,
+                    CONF_TILT: DEFAULT_TILT,
+                    CONF_AZIMUTH: DEFAULT_AZIMUTH,
+                },
+                {
+                    CONF_SYSTEM_SIZE_KW: DEFAULT_SYSTEM_SIZE_KW,
+                    CONF_TILT: DEFAULT_TILT,
+                    CONF_AZIMUTH: DEFAULT_AZIMUTH,
+                },
+            ],
         )
+        schema = strings_schema_from_config(strings)
         return self.async_show_form(step_id="strings", data_schema=schema)
