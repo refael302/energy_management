@@ -276,7 +276,21 @@ class EnergyManagerForecastTomorrowSensor(EnergyManagerSensorBase):
                 "hourly_forecast": data.get("forecast_tomorrow_hourly_kw") or [],
                 "hourly_forecast_today": data.get("forecast_today_remaining_hourly_kw")
                 or [],
-                "current_hour_index": 0,
+                "hourly_forecast_today_full": data.get("forecast_today_full_hourly_kw")
+                or [],
+                "forecast_today_hourly_times_iso": data.get(
+                    "forecast_today_hourly_times_iso"
+                )
+                or [],
+                "forecast_today_remaining_hourly_times_iso": data.get(
+                    "forecast_today_remaining_hourly_times_iso"
+                )
+                or [],
+                "forecast_tomorrow_hourly_times_iso": data.get(
+                    "forecast_tomorrow_hourly_times_iso"
+                )
+                or [],
+                "current_hour_index": data.get("forecast_current_hour_index", -1),
             }
         self.async_write_ha_state()
 

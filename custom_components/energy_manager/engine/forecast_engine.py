@@ -48,12 +48,108 @@ class SolarForecast:
     forecast_tomorrow_kwh: float = 0.0
     forecast_current_power_kw: float = 0.0
     forecast_today_remaining_hourly_kw: list[float] = field(default_factory=list)
+    # First 24 API hours (today block): kW and ISO time per slot (for charts)
+    forecast_today_full_hourly_kw: list[float] = field(default_factory=list)
+    forecast_today_hourly_times_iso: list[str] = field(default_factory=list)
+    forecast_today_remaining_hourly_times_iso: list[str] = field(default_factory=list)
+    # Index 0..23 in first-day block where "now" falls; -1 if "now" is outside that block
+    forecast_current_hour_index: int = -1
     forecast_tomorrow_hourly_kw: list[float] = field(default_factory=list)
+    forecast_tomorrow_hourly_times_iso: list[str] = field(default_factory=list)
     hourly_poa_per_string: list[list[float]] = field(default_factory=list)
     hourly_power_per_string: list[list[float]] = field(default_factory=list)
     available: bool = True  # False when fetch failed or data empty
     # Whole hours from current slot until first hour with PV above threshold (0 = this hour)
     hours_until_first_pv: float = 0.0
+    # True when built from persisted hourly cache (Open-Meteo unreachable)
+    from_cache: bool = False
+
+
+def build_forecast_from_power_series(
+    now: datetime,
+    times: list[datetime],
+    total_kw_after_pr: list[float],
+    inverter_size_kw: float = 0.0,
+) -> SolarForecast | None:
+    """
+    Build SolarForecast from per-string-aggregated kW after PR (before inverter cap).
+    Applies inverter cap here so cached values stay valid if inverter limit changes.
+    """
+    if not times or not total_kw_after_pr or len(times) != len(total_kw_after_pr):
+        return None
+    if inverter_size_kw > 0:
+        total_power_per_hour = [
+            min(p, inverter_size_kw) for p in total_kw_after_pr
+        ]
+    else:
+        total_power_per_hour = list(total_kw_after_pr)
+    n = len(times)
+    now_ts = now.timestamp()
+    t0_ts = times[0].timestamp()
+    hour_index = int((now_ts - t0_ts) / 3600)
+    hour_index = max(0, min(hour_index, n - 1))
+
+    th_pv = NIGHT_BRIDGE_FORECAST_PV_THRESHOLD_KW
+    first_pv_idx: int | None = None
+    for i in range(hour_index, n):
+        if total_power_per_hour[i] > th_pv:
+            first_pv_idx = i
+            break
+    if first_pv_idx is None:
+        hours_until_first_pv = float(max(0, n - hour_index))
+    else:
+        hours_until_first_pv = float(first_pv_idx - hour_index)
+
+    current_power_kw = total_power_per_hour[hour_index]
+    next_hour_kwh = (
+        total_power_per_hour[hour_index + 1]
+        if hour_index + 1 < n
+        else 0.0
+    )
+    today_end_idx = min(24, n)
+    today_remaining_kwh = sum(
+        total_power_per_hour[i] for i in range(hour_index, today_end_idx)
+    )
+    tomorrow_end = min(48, n)
+    tomorrow_hourly_kw = [
+        round(total_power_per_hour[i], 2)
+        for i in range(24, tomorrow_end)
+    ]
+    tomorrow_kwh = sum(total_power_per_hour[i] for i in range(24, tomorrow_end))
+    today_remaining_hourly_kw = [
+        round(total_power_per_hour[i], 2)
+        for i in range(hour_index, min(24, n))
+    ]
+    today_full_kw = [
+        round(total_power_per_hour[i], 2) for i in range(today_end_idx)
+    ]
+    today_times_iso = [times[i].isoformat() for i in range(today_end_idx)]
+    remaining_times_iso = [
+        times[i].isoformat() for i in range(hour_index, today_end_idx)
+    ]
+    current_in_first_day = hour_index if hour_index < 24 else -1
+    tomorrow_times_iso = [
+        times[i].isoformat() for i in range(24, tomorrow_end)
+    ]
+
+    return SolarForecast(
+        forecast_next_hour_kwh=round(next_hour_kwh, 2),
+        forecast_today_remaining_kwh=round(today_remaining_kwh, 2),
+        forecast_tomorrow_kwh=round(tomorrow_kwh, 2),
+        forecast_current_power_kw=round(current_power_kw, 2),
+        forecast_today_remaining_hourly_kw=today_remaining_hourly_kw,
+        forecast_today_full_hourly_kw=today_full_kw,
+        forecast_today_hourly_times_iso=today_times_iso,
+        forecast_today_remaining_hourly_times_iso=remaining_times_iso,
+        forecast_current_hour_index=current_in_first_day,
+        forecast_tomorrow_hourly_kw=tomorrow_hourly_kw,
+        forecast_tomorrow_hourly_times_iso=tomorrow_times_iso,
+        hourly_poa_per_string=[],
+        hourly_power_per_string=[],
+        available=True,
+        hours_until_first_pv=round(hours_until_first_pv, 2),
+        from_cache=True,
+    )
 
 
 def _compute_poa_and_power_sync(
@@ -160,6 +256,41 @@ class ForecastEngine:
                 StringConfig(DEFAULT_SYSTEM_SIZE_KW, DEFAULT_TILT, DEFAULT_AZIMUTH)
             ]
         self._last: SolarForecast | None = None
+        # Last successful hourly series (after PR, before inverter) for disk cache
+        self._last_cache_payload: dict[str, Any] | None = None
+
+    def get_cache_payload(self) -> dict[str, Any] | None:
+        """Serializable hourly forecast for Store; None if no successful fetch yet."""
+        return self._last_cache_payload
+
+    def build_from_stored(
+        self,
+        hass: Any,
+        now: datetime,
+        times_iso: list[str],
+        total_kw_after_pr: list[float],
+        inverter_size_kw: float = 0.0,
+    ) -> SolarForecast | None:
+        """Rebuild SolarForecast from persisted hourly kW (after PR)."""
+        if not times_iso or len(times_iso) != len(total_kw_after_pr):
+            return None
+        tz_name = getattr(hass.config, "time_zone", None) or "UTC"
+        try:
+            local_zone = ZoneInfo(tz_name)
+        except Exception:
+            local_zone = ZoneInfo("UTC")
+
+        def _parse_iso(ts: str) -> datetime:
+            s = ts.replace("Z", "+00:00") if ts.endswith("Z") else ts
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=local_zone)
+            return dt
+
+        times = [_parse_iso(t) for t in times_iso]
+        return build_forecast_from_power_series(
+            now, times, total_kw_after_pr, inverter_size_kw
+        )
 
     async def fetch_and_compute(
         self,
@@ -261,17 +392,11 @@ class ForecastEngine:
             self.strings,
         )
 
-        # Aggregate total power per hour (sum over strings)
-        total_power_per_hour = []
-        for hour_idx in range(len(times)):
-            total_power_per_hour.append(
-                sum(p[hour_idx] for p in power_per_string) * self.pr_factor
-            )
-        # Cap each hour at inverter size so today/tomorrow sums reflect real production
-        if inverter_size_kw > 0:
-            total_power_per_hour = [
-                min(p, inverter_size_kw) for p in total_power_per_hour
-            ]
+        # Aggregate total power per hour (sum over strings), after PR; inverter cap in builder
+        total_kw_after_pr = [
+            sum(p[hour_idx] for p in power_per_string) * self.pr_factor
+            for hour_idx in range(len(times))
+        ]
 
         # Index-based: which hour slot does "now" fall into (robust to timezone/year)
         now_ts = now.timestamp()
@@ -279,66 +404,35 @@ class ForecastEngine:
         hour_index = int((now_ts - t0_ts) / 3600)
         hour_index = max(0, min(hour_index, len(times) - 1))
 
-        th_pv = NIGHT_BRIDGE_FORECAST_PV_THRESHOLD_KW
-        first_pv_idx: int | None = None
-        for i in range(hour_index, len(total_power_per_hour)):
-            if total_power_per_hour[i] > th_pv:
-                first_pv_idx = i
-                break
-        if first_pv_idx is None:
-            hours_until_first_pv = float(max(0, len(total_power_per_hour) - hour_index))
-        else:
-            hours_until_first_pv = float(first_pv_idx - hour_index)
-
-        current_power_kw = total_power_per_hour[hour_index]
-        next_hour_kwh = (
-            total_power_per_hour[hour_index + 1]
-            if hour_index + 1 < len(times)
-            else 0.0
+        result = build_forecast_from_power_series(
+            now, times, total_kw_after_pr, inverter_size_kw
         )
-        # Today remaining: from current hour to end of first 24h (API first day)
-        today_end_idx = min(24, len(times))
-        today_remaining_kwh = sum(
-            total_power_per_hour[i]
-            for i in range(hour_index, today_end_idx)
-        )
-        # Tomorrow: next 24h (API second day)
-        tomorrow_end = min(48, len(total_power_per_hour))
-        tomorrow_hourly_kw = [
-            round(total_power_per_hour[i], 2)
-            for i in range(24, tomorrow_end)
-        ]
-        tomorrow_kwh = sum(total_power_per_hour[i] for i in range(24, tomorrow_end))
-        today_remaining_hourly_kw = [
-            round(total_power_per_hour[i], 2)
-            for i in range(hour_index, min(24, len(total_power_per_hour)))
-        ]
+        if result is None:
+            return SolarForecast(available=False)
+        result.hourly_poa_per_string = poa_per_string
+        result.hourly_power_per_string = power_per_string
+        result.from_cache = False
 
-        if sum(total_power_per_hour) == 0:
+        capped = [
+            min(p, inverter_size_kw) if inverter_size_kw > 0 else p
+            for p in total_kw_after_pr
+        ]
+        if sum(capped) == 0:
             _LOGGER.warning(
                 "Forecast computed all zeros (hour_index=%s, now=%s)",
                 hour_index,
                 now.isoformat(),
             )
         _LOGGER.debug(
-            "Forecast hour_index=%s, next_hour_kwh=%s, today_remaining=%s, tomorrow=%s",
-            hour_index,
-            next_hour_kwh,
-            today_remaining_kwh,
-            tomorrow_kwh,
+            "Forecast next_hour_kwh=%s, today_remaining=%s, tomorrow=%s",
+            result.forecast_next_hour_kwh,
+            result.forecast_today_remaining_kwh,
+            result.forecast_tomorrow_kwh,
         )
 
-        result = SolarForecast(
-            forecast_next_hour_kwh=round(next_hour_kwh, 2),
-            forecast_today_remaining_kwh=round(today_remaining_kwh, 2),
-            forecast_tomorrow_kwh=round(tomorrow_kwh, 2),
-            forecast_current_power_kw=round(current_power_kw, 2),
-            forecast_today_remaining_hourly_kw=today_remaining_hourly_kw,
-            forecast_tomorrow_hourly_kw=tomorrow_hourly_kw,
-            hourly_poa_per_string=poa_per_string,
-            hourly_power_per_string=power_per_string,
-            available=True,
-            hours_until_first_pv=round(hours_until_first_pv, 2),
-        )
+        self._last_cache_payload = {
+            "times_iso": [t.isoformat() for t in times],
+            "total_kw_after_pr": list(total_kw_after_pr),
+        }
         self._last = result
         return result

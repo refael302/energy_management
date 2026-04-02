@@ -13,6 +13,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from .engine.forecast_cache import (
+    create_forecast_store,
+    forecast_config_fingerprint,
+    stored_series_covers_now,
+)
 from .const import (
     BATTERY_RUNTIME_MIN_SOC_PERCENT,
     CONF_BASELINE_CONSUMPTION,
@@ -199,6 +204,8 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_strategy_reason: str = ""
         self._last_strategy_time: datetime | None = None
         self._prev_forecast_available: bool | None = None
+        self._forecast_store = create_forecast_store(hass, entry.entry_id)
+        self._forecast_disk_cache: dict[str, Any] | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch sensors, forecast, update model, run decision, apply load manager."""
@@ -221,23 +228,77 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.model.battery_current = battery_current if battery_current != 0.0 else None
             current_config = {**self.entry.data, **(self.entry.options or {})}
 
-            # 2. Forecast (cached every FORECAST_STRATEGY_CACHE_MINUTES)
+            # 2. Forecast: refresh from Open-Meteo on interval; persist hourly series to disk;
+            #    on API failure use disk cache (then in-memory) so decisions still use last good hourly data.
             now_utc = datetime.now(timezone.utc)
             cache_min = timedelta(minutes=FORECAST_STRATEGY_CACHE_MINUTES)
             inverter_size_kw = float(
                 current_config.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW) or 0
             )
+            fp = forecast_config_fingerprint(current_config)
+            if self._forecast_disk_cache is None:
+                self._forecast_disk_cache = await self._forecast_store.async_load()
+
             if (
                 self._last_forecast is None
                 or self._last_forecast_time is None
                 or (now_utc - self._last_forecast_time) >= cache_min
             ):
-                # Use HA local "now" so hour_index matches Open-Meteo hourly slots (same TZ).
+                now_ha = dt_util.now()
                 forecast = await self.forecast_engine.fetch_and_compute(
-                    self.hass, dt_util.now(), inverter_size_kw=inverter_size_kw
+                    self.hass, now_ha, inverter_size_kw=inverter_size_kw
                 )
-                self._last_forecast = forecast
-                self._last_forecast_time = now_utc
+                if forecast.available:
+                    self._last_forecast = forecast
+                    self._last_forecast_time = now_utc
+                    payload = self.forecast_engine.get_cache_payload()
+                    if payload and payload.get("times_iso") and payload.get("total_kw_after_pr"):
+                        try:
+                            await self._forecast_store.async_save(
+                                {
+                                    "fingerprint": fp,
+                                    "times_iso": payload["times_iso"],
+                                    "total_kw_after_pr": payload["total_kw_after_pr"],
+                                }
+                            )
+                            self._forecast_disk_cache = await self._forecast_store.async_load()
+                        except Exception as e:
+                            _LOGGER.debug("Forecast disk save failed: %s", e)
+                else:
+                    disk = self._forecast_disk_cache
+                    rebuilt = None
+                    if (
+                        disk
+                        and disk.get("fingerprint") == fp
+                        and disk.get("times_iso")
+                        and disk.get("total_kw_after_pr")
+                        and stored_series_covers_now(disk["times_iso"], self.hass, now_ha)
+                    ):
+                        rebuilt = self.forecast_engine.build_from_stored(
+                            self.hass,
+                            now_ha,
+                            list(disk["times_iso"]),
+                            [float(x) for x in disk["total_kw_after_pr"]],
+                            inverter_size_kw,
+                        )
+                    if rebuilt is not None and rebuilt.available:
+                        forecast = rebuilt
+                        self._last_forecast = forecast
+                        self._last_forecast_time = now_utc
+                        _LOGGER.warning(
+                            "Open-Meteo unavailable; using persisted hourly forecast cache"
+                        )
+                    elif self._last_forecast is not None and getattr(
+                        self._last_forecast, "available", False
+                    ):
+                        forecast = self._last_forecast
+                        self._last_forecast_time = now_utc
+                        _LOGGER.warning(
+                            "Open-Meteo unavailable; using last in-memory forecast"
+                        )
+                    else:
+                        self._last_forecast = forecast
+                        self._last_forecast_time = now_utc
             else:
                 forecast = self._last_forecast
             forecast_available = getattr(forecast, "available", True)
@@ -361,6 +422,21 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f_today_hourly = getattr(
                     forecast, "forecast_today_remaining_hourly_kw", []
                 )
+                f_today_full_hourly = getattr(
+                    forecast, "forecast_today_full_hourly_kw", []
+                )
+                f_today_hourly_times_iso = getattr(
+                    forecast, "forecast_today_hourly_times_iso", []
+                )
+                f_today_remaining_times_iso = getattr(
+                    forecast, "forecast_today_remaining_hourly_times_iso", []
+                )
+                f_current_hour_index = getattr(
+                    forecast, "forecast_current_hour_index", -1
+                )
+                f_tomorrow_hourly_times_iso = getattr(
+                    forecast, "forecast_tomorrow_hourly_times_iso", []
+                )
                 f_current = getattr(forecast, "forecast_current_power_kw", None) or 0.0
                 daily_margin = self.model.daily_margin_kwh
                 pv_safe = self.model.pv_remaining_today_safe_kwh
@@ -368,6 +444,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f_next = f_today = f_tomorrow = f_current = daily_margin = pv_safe = None
                 f_tomorrow_hourly = []
                 f_today_hourly = []
+                f_today_full_hourly = []
+                f_today_hourly_times_iso = []
+                f_today_remaining_times_iso = []
+                f_current_hour_index = -1
+                f_tomorrow_hourly_times_iso = []
 
             usable_kwh = max(
                 0.0,
@@ -407,6 +488,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "forecast": forecast,
                 "decision": decision,
                 "forecast_available": forecast_available,
+                "forecast_from_cache": getattr(forecast, "from_cache", False),
                 "battery_soc": soc,
                 "battery_power_kw": self.model.battery_power_kw,
                 "solar_production_kw": self.model.solar_production_kw,
@@ -416,6 +498,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "forecast_tomorrow_kwh": f_tomorrow,
                 "forecast_tomorrow_hourly_kw": f_tomorrow_hourly,
                 "forecast_today_remaining_hourly_kw": f_today_hourly,
+                "forecast_today_full_hourly_kw": f_today_full_hourly,
+                "forecast_today_hourly_times_iso": f_today_hourly_times_iso,
+                "forecast_today_remaining_hourly_times_iso": f_today_remaining_times_iso,
+                "forecast_current_hour_index": f_current_hour_index,
+                "forecast_tomorrow_hourly_times_iso": f_tomorrow_hourly_times_iso,
                 "forecast_current_power_kw": f_current,
                 "energy_manager_mode": decision.system_mode,
                 "strategy_recommendation": decision.strategy_recommendation,
