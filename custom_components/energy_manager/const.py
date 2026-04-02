@@ -3,6 +3,17 @@
 DOMAIN = "energy_manager"
 NAME = "Energy Manager"
 
+# Service: clear learned per-consumer power (optional manual reset)
+SERVICE_RESET_CONSUMER_LEARN = "reset_consumer_learn"
+
+# Consumer power learning (house meter delta when integration turns a consumer on)
+CONSUMER_LEARN_MIN_SAMPLES = 3
+CONSUMER_LEARN_MAX_SAMPLES = 12
+# Finalize when (max-min)/mean <= this ratio, or after dropping one outlier
+CONSUMER_LEARN_SPREAD_MAX = 0.10
+# Wait for house sensor to publish a new state after turn_on
+CONSUMER_LEARN_TIMEOUT_SEC = 120.0
+
 # Update interval for coordinator (seconds)
 UPDATE_INTERVAL = 30
 # Forecast and strategy cache (minutes) – fetch/update every 15 min, use cache between

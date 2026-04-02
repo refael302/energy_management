@@ -60,6 +60,7 @@ async def async_setup_entry(
             EnergyManagerConsumersOnSensor(coordinator, entry),
             EnergyManagerBatteryRuntimeSensor(coordinator, entry),
             EnergyManagerBatteryTimeToFullSensor(coordinator, entry),
+            EnergyManagerConsumerLearnedPowerSensor(coordinator, entry),
         ]
     )
 
@@ -581,6 +582,34 @@ class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data is not None:
             self._attr_native_value = data.get("battery_runtime_hhmm", "99:59")
+        self.async_write_ha_state()
+
+
+class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
+    """Sum of learned per-consumer power (kW); attributes list each consumer and pending sample counts."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "consumer_learned_power_kw",
+            "Consumer Learned Power",
+            icon="mdi:transmission-tower",
+            device_class=SensorDeviceClass.POWER,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfPower.KILO_WATT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data is not None:
+            self._attr_native_value = data.get("consumer_learned_power_kw", 0.0)
+            self._attr_extra_state_attributes = {
+                "consumers_kw": data.get("consumer_learned_kw") or {},
+                "pending_samples": data.get("consumer_learn_pending_samples") or {},
+            }
         self.async_write_ha_state()
 
 

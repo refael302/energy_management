@@ -13,6 +13,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from .engine.consumer_learn import ConsumerLearner, async_wait_house_power_after_turn_on
+from .engine.consumer_learn_cache import consumer_learn_fingerprint
 from .engine.forecast_cache import (
     create_forecast_store,
     forecast_config_fingerprint,
@@ -183,11 +185,13 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._recommended_to_turn_off_entity_ids = [
                 self._recommended_to_turn_off_entity_ids
             ]
+        self.consumer_learner = ConsumerLearner(hass, entry.entry_id)
         self.load_manager = LoadManager(
             hass,
             consumer_switches,
             lights,
             int(data.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY)),
+            schedule_consumer_learn=self._schedule_consumer_learn,
         )
         self._entity_ids = {
             "battery_soc": data.get(CONF_BATTERY_SOC_SENSOR),
@@ -206,6 +210,41 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._prev_forecast_available: bool | None = None
         self._forecast_store = create_forecast_store(hass, entry.entry_id)
         self._forecast_disk_cache: dict[str, Any] | None = None
+
+    def _schedule_consumer_learn(self, entity_id: str, baseline_w: float) -> None:
+        """After integration turns a consumer on, sample house meter delta (async)."""
+        self.hass.async_create_task(
+            self._async_consumer_learn_sample(entity_id, baseline_w)
+        )
+
+    async def _async_consumer_learn_sample(
+        self, consumer_entity_id: str, baseline_w: float
+    ) -> None:
+        house = self._entity_ids.get("house")
+        if not house:
+            return
+        current_config = {**self.entry.data, **(self.entry.options or {})}
+        fp = consumer_learn_fingerprint(current_config)
+        await self.consumer_learner.async_ensure_loaded(fp)
+        if self.consumer_learner.is_learned(consumer_entity_id):
+            return
+        moment = dt_util.utcnow()
+        after_w = await async_wait_house_power_after_turn_on(self.hass, house, moment)
+        if after_w is None:
+            return
+        delta = after_w - baseline_w
+        await self.consumer_learner.async_record_delta_w(consumer_entity_id, delta, fp)
+        if self.data is not None:
+            learned = self.consumer_learner.get_learned_kw()
+            pending = self.consumer_learner.get_pending_counts()
+            self.async_set_updated_data(
+                {
+                    **self.data,
+                    "consumer_learned_kw": learned,
+                    "consumer_learned_power_kw": round(sum(learned.values()), 3),
+                    "consumer_learn_pending_samples": pending,
+                }
+            )
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch sensors, forecast, update model, run decision, apply load manager."""
@@ -227,6 +266,10 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.model.house_consumption_kw = house_w / 1000.0
             self.model.battery_current = battery_current if battery_current != 0.0 else None
             current_config = {**self.entry.data, **(self.entry.options or {})}
+
+            await self.consumer_learner.async_ensure_loaded(
+                consumer_learn_fingerprint(current_config)
+            )
 
             # 2. Forecast: refresh from Open-Meteo on interval; persist hourly series to disk;
             #    on API failure use disk cache (then in-memory) so decisions still use last good hourly data.
@@ -376,6 +419,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.load_manager.apply_mode(
                 decision.system_mode,
                 super_saving=super_saving,
+                house_consumption_entity_id=self._entity_ids.get("house"),
             )
 
             # 6. Discharge over limit: turn off one consumer when discharge_state -> max
@@ -527,6 +571,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "battery_time_to_full_hhmm": battery_time_to_full_hhmm,
                 "consumers_on_count": consumers_on_count,
                 "consumers_total": consumers_total,
+                "consumer_learned_kw": self.consumer_learner.get_learned_kw(),
+                "consumer_learned_power_kw": round(
+                    sum(self.consumer_learner.get_learned_kw().values()), 3
+                ),
+                "consumer_learn_pending_samples": self.consumer_learner.get_pending_counts(),
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)

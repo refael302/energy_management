@@ -68,5 +68,17 @@
         }
       }
     }
+  },
+  "services": {
+    "reset_consumer_learn": {
+      "name": "Reset learned consumer power",
+      "description": "Clears learned per-consumer power. Learning resumes when consumers turn on in wasting mode.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Energy Manager config entry id. Leave empty to reset all instances."
+        }
+      }
+    }
   }
 }

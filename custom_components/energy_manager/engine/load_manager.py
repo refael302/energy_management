@@ -7,6 +7,7 @@ and discharge_over_limit_turn_off_one.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -20,6 +21,20 @@ from ..const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _read_power_w(hass: HomeAssistant, entity_id: str | None) -> float | None:
+    """House consumption in W; None if missing or not numeric."""
+    if not entity_id:
+        return None
+    state = hass.states.get(entity_id)
+    if state is None or state.state in ("unknown", "unavailable", ""):
+        return None
+    try:
+        return float(state.state)
+    except (TypeError, ValueError):
+        return None
+
 
 # Entities that can be used as consumers (turn_on/turn_off).
 CONSUMER_DOMAINS = ("switch", "input_boolean")
@@ -51,11 +66,13 @@ class LoadManager:
         consumer_entity_ids: list[str],
         lights_entity_ids: list[str],
         delay_minutes: int,
+        schedule_consumer_learn: Callable[[str, float], None] | None = None,
     ) -> None:
         self.hass = hass
         self.consumer_entity_ids = consumer_entity_ids or []
         self.lights_entity_ids = lights_entity_ids or []
         self.delay_minutes = delay_minutes
+        self._schedule_consumer_learn = schedule_consumer_learn
         self.state = LoadManagerState()
         self._last_turn_on_time: datetime | None = None
         self._last_turn_off_time: datetime | None = None
@@ -72,14 +89,17 @@ class LoadManager:
         self,
         system_mode: str,
         super_saving: bool = False,
+        *,
+        house_consumption_entity_id: str | None = None,
     ) -> None:
         """
         Apply actions for the given system mode.
         super_saving: when True (very low battery), also turn off lights.
+        house_consumption_entity_id: when set with schedule_consumer_learn, measure delta for learning.
         """
         consumers = self._consumer_entity_ids(self.consumer_entity_ids)
         if system_mode == SYSTEM_MODE_WASTING:
-            await self._apply_wasting_once(consumers)
+            await self._apply_wasting_once(consumers, house_consumption_entity_id)
         elif system_mode == SYSTEM_MODE_EMERGENCY_SAVING:
             await self._apply_saving(consumers, super_saving=True)
         elif system_mode == SYSTEM_MODE_SAVING:
@@ -181,7 +201,11 @@ class LoadManager:
         elapsed = (datetime.now(timezone.utc) - self._last_turn_on_time).total_seconds()
         return elapsed >= self.delay_minutes * 60
 
-    async def _apply_wasting_once(self, consumers: list[str]) -> None:
+    async def _apply_wasting_once(
+        self,
+        consumers: list[str],
+        house_consumption_entity_id: str | None,
+    ) -> None:
         """
         When delay elapsed, turn on the first consumer that is off.
         Called periodically by coordinator; one consumer per delay_minutes.
@@ -191,6 +215,9 @@ class LoadManager:
         for entity_id in consumers:
             state = self.hass.states.get(entity_id)
             if state and state.state != "on":
+                baseline_w: float | None = None
+                if self._schedule_consumer_learn and house_consumption_entity_id:
+                    baseline_w = _read_power_w(self.hass, house_consumption_entity_id)
                 domain = self._domain(entity_id)
                 if domain:
                     await self.hass.services.async_call(
@@ -203,6 +230,12 @@ class LoadManager:
                 if entity_id not in self.state.consumers_turned_on_by_wasting:
                     self.state.consumers_turned_on_by_wasting.append(entity_id)
                 _LOGGER.debug("Turned on consumer: %s", entity_id)
+                if (
+                    self._schedule_consumer_learn
+                    and house_consumption_entity_id
+                    and baseline_w is not None
+                ):
+                    self._schedule_consumer_learn(entity_id, baseline_w)
                 return
 
     async def discharge_over_limit_turn_off_one(

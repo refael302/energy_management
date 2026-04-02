@@ -97,5 +97,17 @@
         }
       }
     }
+  },
+  "services": {
+    "reset_consumer_learn": {
+      "name": "איפוס למידת הספק צרכנים",
+      "description": "מוחק את ערכי ההספק הנלמדים לכל צרכן. הלמידה מתחילה מחדש כשמדליקים צרכנים במצב בזבוז.",
+      "fields": {
+        "config_entry_id": {
+          "name": "מזהה רשומת הגדרות",
+          "description": "מזהה ה-config entry של Energy Manager. השאר ריק לאיפוס כל המופעים."
+        }
+      }
+    }
   }
 }
