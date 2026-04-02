@@ -6,12 +6,15 @@ Replicates YAML template sensors: battery status, headroom, margin, etc.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any
 
 from ..const import (
+    BASELINE_PROFILE_BOOTSTRAP_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW,
 )
+from .baseline_integrals import kwh_forward_hours, kwh_over_clock_interval
 
 
 @dataclass
@@ -27,7 +30,6 @@ class EnergyModel:
 
     # Config (from entry)
     battery_capacity_kwh: float = 20.0
-    baseline_consumption_kw: float = 0.8
     eod_battery_target_percent: float = 90.0
     emergency_reserve_percent: float = 20.0
     safety_forecast_factor_percent: float = 90.0
@@ -64,12 +66,15 @@ class EnergyModel:
     night_bridge_energy_need_kwh: float = 0.0
     night_bridge_usable_kwh: float = 0.0
 
-    def update_derived(self) -> None:
+    # Learned hourly baseline (kW per clock hour 0–23); set by coordinator each tick
+    baseline_hourly_kw: list[float] = field(default_factory=lambda: [BASELINE_PROFILE_BOOTSTRAP_KW] * 24)
+
+    def update_derived(self, now_local: datetime | None = None) -> None:
         """Update all derived fields from current raw and config values."""
         self._battery_status()
         self._charge_discharge_states()
-        self._consumption_and_headroom()
-        self._night_bridge()
+        self._consumption_and_headroom(now_local)
+        self._night_bridge(now_local)
 
     def _battery_status(self) -> None:
         if self.battery_soc < 15:
@@ -112,10 +117,20 @@ class EnergyModel:
 
         self.discharge_under_limit = 0 < c < thr_under
 
-    def _consumption_and_headroom(self) -> None:
-        self.consumption_till_eod_kwh = round(
-            self.baseline_consumption_kw * self.hours_until_eod, 2
-        )
+    def _consumption_and_headroom(self, now_local: datetime | None) -> None:
+        # Baseline integral until local calendar midnight (distinct from hours_until_eod / sunset).
+        if now_local is not None and len(self.baseline_hourly_kw) == 24:
+            next_midnight = now_local.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ) + timedelta(days=1)
+            self.consumption_till_eod_kwh = round(
+                kwh_over_clock_interval(
+                    self.baseline_hourly_kw, now_local, next_midnight
+                ),
+                2,
+            )
+        else:
+            self.consumption_till_eod_kwh = 0.0
         diff = self.eod_battery_target_percent - self.battery_soc
         self.battery_charge_headroom_kwh = round(
             max(0, diff / 100 * self.battery_capacity_kwh), 2
@@ -140,7 +155,7 @@ class EnergyModel:
             self.pv_remaining_today_safe_kwh = 0.0
             self.daily_margin_kwh = -1.0  # conservative: assume no PV headroom
 
-    def _night_bridge(self) -> None:
+    def _night_bridge(self, now_local: datetime | None) -> None:
         """Relax next-hour PV check near sunrise when battery can last until forecast PV and tomorrow looks safe."""
         self.night_bridge_relaxed = False
         self.night_bridge_tomorrow_ok = False
@@ -161,12 +176,28 @@ class EnergyModel:
             ),
             2,
         )
-        tomorrow_load_kwh = round(self.baseline_consumption_kw * 24.0, 2)
+        if now_local is not None and len(self.baseline_hourly_kw) == 24:
+            day_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            next_day_start = day_start + timedelta(days=1)
+            tomorrow_load_kwh = round(
+                kwh_over_clock_interval(
+                    self.baseline_hourly_kw, day_start, next_day_start
+                ),
+                2,
+            )
+            self.night_bridge_energy_need_kwh = round(
+                kwh_forward_hours(
+                    self.baseline_hourly_kw,
+                    now_local,
+                    self.hours_until_first_pv,
+                ),
+                2,
+            )
+        else:
+            tomorrow_load_kwh = 0.0
+            self.night_bridge_energy_need_kwh = 0.0
         self.night_bridge_tomorrow_ok = pv_tomorrow_safe >= (
             charge_from_floor_kwh + tomorrow_load_kwh
-        )
-        self.night_bridge_energy_need_kwh = round(
-            self.baseline_consumption_kw * self.hours_until_first_pv, 2
         )
         self.night_bridge_usable_kwh = round(
             max(

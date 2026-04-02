@@ -17,6 +17,9 @@ from .engine.consumer_learn_cache import consumer_learn_fingerprint
 
 _LOGGER = logging.getLogger(__name__)
 
+# Removed from config in v2; strip from existing entries on migrate
+_LEGACY_BASELINE_CONSUMPTION = "baseline_consumption"
+
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT]
 
 RESET_CONSUMER_LEARN_SCHEMA = vol.Schema(
@@ -64,6 +67,23 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         handle_reset_consumer_learn,
         schema=RESET_CONSUMER_LEARN_SCHEMA,
     )
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Drop legacy baseline_consumption; hourly profile is learned automatically."""
+    if entry.version > 1:
+        return True
+    data = {**entry.data}
+    data.pop(_LEGACY_BASELINE_CONSUMPTION, None)
+    options = dict(entry.options) if entry.options else {}
+    options.pop(_LEGACY_BASELINE_CONSUMPTION, None)
+    hass.config_entries.async_update_entry(
+        entry,
+        data=data,
+        options=options if options else None,
+        version=2,
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -19,7 +19,7 @@ from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ..const import DOMAIN, NAME
+from ..const import BASELINE_PROFILE_BOOTSTRAP_KW, BASELINE_PROFILE_WINDOW_DAYS, DOMAIN, NAME
 from ..coordinator import EnergyManagerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,6 +61,7 @@ async def async_setup_entry(
             EnergyManagerBatteryRuntimeSensor(coordinator, entry),
             EnergyManagerBatteryTimeToFullSensor(coordinator, entry),
             EnergyManagerConsumerLearnedPowerSensor(coordinator, entry),
+            EnergyManagerBaselineForecastSensor(coordinator, entry),
         ]
     )
 
@@ -582,6 +583,39 @@ class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data is not None:
             self._attr_native_value = data.get("battery_runtime_hhmm", "99:59")
+        self.async_write_ha_state()
+
+
+class EnergyManagerBaselineForecastSensor(EnergyManagerSensorBase):
+    """Learned baseline house load (kW) for the current local hour; hourly profile and daily estimate in attributes."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "baseline_forecast_kw",
+            "Baseline forecast",
+            icon="mdi:home-lightning-bolt-outline",
+            device_class=SensorDeviceClass.POWER,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfPower.KILO_WATT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data is not None:
+            self._attr_native_value = data.get("baseline_forecast_kw", BASELINE_PROFILE_BOOTSTRAP_KW)
+            hourly = data.get("baseline_hourly_forecast_kw") or []
+            hour_map = {str(h): hourly[h] for h in range(min(24, len(hourly)))}
+            self._attr_extra_state_attributes = {
+                "hourly_forecast_kw": hour_map,
+                "estimated_daily_kwh": data.get("baseline_estimated_daily_kwh"),
+                "completed_days": data.get("baseline_completed_days"),
+                "window_days": BASELINE_PROFILE_WINDOW_DAYS,
+                "sample_recorded_last_update": data.get("baseline_sample_recorded"),
+            }
         self.async_write_ha_state()
 
 

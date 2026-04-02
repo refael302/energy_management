@@ -13,6 +13,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from .engine.baseline_profile_learn import (
+    BaselineProfileLearner,
+    residual_house_kw,
+    unlearned_consumer_on,
+)
 from .engine.consumer_learn import ConsumerLearner, async_wait_house_power_after_turn_on
 from .engine.consumer_learn_cache import consumer_learn_fingerprint
 from .engine.forecast_cache import (
@@ -22,7 +27,6 @@ from .engine.forecast_cache import (
 )
 from .const import (
     BATTERY_RUNTIME_MIN_SOC_PERCENT,
-    CONF_BASELINE_CONSUMPTION,
     STRATEGY_MEDIUM,
     DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
     DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
@@ -55,7 +59,6 @@ from .const import (
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_STRINGS,
     DEFAULT_BATTERY_CAPACITY,
-    DEFAULT_BASELINE_CONSUMPTION,
     DEFAULT_CONSUMER_DELAY,
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     DEFAULT_DISCHARGE_LIMIT_PERCENT,
@@ -166,7 +169,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.model = EnergyModel(
             battery_capacity_kwh=float(data.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY)),
-            baseline_consumption_kw=float(data.get(CONF_BASELINE_CONSUMPTION, DEFAULT_BASELINE_CONSUMPTION)),
             eod_battery_target_percent=float(data.get(CONF_EOD_BATTERY_TARGET, DEFAULT_EOD_BATTERY_TARGET)),
             emergency_reserve_percent=float(data.get(CONF_MINIMUM_BATTERY_RESERVE, DEFAULT_MINIMUM_BATTERY_RESERVE)),
             safety_forecast_factor_percent=float(data.get(CONF_SAFETY_FORECAST_FACTOR, DEFAULT_SAFETY_FORECAST_FACTOR)),
@@ -197,6 +199,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._recommended_to_turn_off_entity_ids
             ]
         self.consumer_learner = ConsumerLearner(hass, entry.entry_id)
+        self.baseline_profile_learner = BaselineProfileLearner(hass, entry.entry_id)
         self.load_manager = LoadManager(
             hass,
             consumer_switches,
@@ -279,9 +282,28 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.model.battery_current = battery_current if battery_current != 0.0 else None
             current_config = {**self.entry.data, **(self.entry.options or {})}
 
-            await self.consumer_learner.async_ensure_loaded(
-                consumer_learn_fingerprint(current_config)
+            fp_learn = consumer_learn_fingerprint(current_config)
+            await self.consumer_learner.async_ensure_loaded(fp_learn)
+            await self.baseline_profile_learner.async_ensure_loaded(current_config)
+
+            sample_local = dt_util.now()
+            consumer_entity_ids = _normalize_consumer_entity_ids(
+                current_config.get(CONF_CONSUMER_SWITCHES)
             )
+            learned_kw = self.consumer_learner.get_learned_kw()
+            baseline_sampled = False
+            if not unlearned_consumer_on(self.hass, consumer_entity_ids, learned_kw):
+                res_kw = residual_house_kw(
+                    self.hass,
+                    self.model.house_consumption_kw,
+                    consumer_entity_ids,
+                    learned_kw,
+                )
+                baseline_sampled = self.baseline_profile_learner.record_sample_if_allowed(
+                    res_kw, sample_local
+                )
+            self.model.baseline_hourly_kw = self.baseline_profile_learner.get_effective_profile_kw()
+            await self.baseline_profile_learner.async_persist_if_dirty()
 
             # 2. Forecast: refresh from Open-Meteo on interval; persist hourly series to disk;
             #    on API failure use disk cache (then in-memory) so decisions still use last good hourly data.
@@ -385,8 +407,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 else True
             )
 
-            # 3. Derived
-            self.model.update_derived()
+            # 3. Derived (hourly baseline uses local midnight for consumption_till_eod_kwh)
+            now_local = dt_util.now()
+            self.model.update_derived(now_local)
 
             # 4. Decision engine (charge state duration: assume ~0.5 min per update)
             self.decision_engine.update_charge_state_duration(
@@ -664,6 +687,13 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 if wasting_context is not None
                 else [],
+                "baseline_hourly_forecast_kw": list(self.model.baseline_hourly_kw),
+                "baseline_forecast_kw": self.baseline_profile_learner.get_current_hour_forecast_kw(
+                    now_local
+                ),
+                "baseline_estimated_daily_kwh": self.baseline_profile_learner.estimated_daily_kwh(),
+                "baseline_completed_days": self.baseline_profile_learner.completed_days_count(),
+                "baseline_sample_recorded": baseline_sampled,
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)

@@ -15,7 +15,6 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_AZIMUTH,
-    CONF_BASELINE_CONSUMPTION,
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
@@ -38,7 +37,6 @@ from .const import (
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
-    DEFAULT_BASELINE_CONSUMPTION,
     DEFAULT_BATTERY_CAPACITY,
     DEFAULT_CONSUMER_DELAY,
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
@@ -152,10 +150,6 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
     """Step 2: numeric params and optional entities. Lat/lon are set in the flow."""
     return vol.Schema(
         {
-            vol.Required(
-                CONF_BASELINE_CONSUMPTION,
-                default=base.get(CONF_BASELINE_CONSUMPTION, DEFAULT_BASELINE_CONSUMPTION),
-            ): vol.Coerce(float),
             vol.Required(
                 CONF_MINIMUM_BATTERY_RESERVE,
                 default=base.get(

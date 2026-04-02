@@ -25,7 +25,6 @@
         "title": "Advanced parameters",
         "description": "Numeric settings and optional helpers. Latitude and longitude for the solar forecast are taken from your Home Assistant home location automatically (you can still correct them later by reconfiguring if needed). Defaults match the previous single-step setup.",
         "data": {
-          "baseline_consumption": "Baseline consumption",
           "minimum_battery_reserve": "Minimum battery reserve",
           "safety_forecast_factor": "Safety forecast factor",
           "consumer_delay": "Consumer delay (normal mode ramp)",
@@ -40,7 +39,6 @@
           "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
         },
         "data_description": {
-          "baseline_consumption": "Estimated baseline house consumption in kW (average when no heavy consumers). Example: 0.8",
           "minimum_battery_reserve": "Emergency reserve as percent of battery capacity (0–100). Not used for consumers. Example: 20",
           "safety_forecast_factor": "Safety factor for daily solar forecast in percent (10–100). 90 = use 90% of forecast. Example: 90",
           "consumer_delay": "Delay in minutes between turning off one consumer in Normal mode (LIFO). Wasting uses 1 min (learned) / 5 min (still learning) between actions.",
@@ -102,7 +100,6 @@
           "title": "Advanced parameters",
           "description": "Numeric settings and optional helpers. Latitude and longitude are kept from your existing configuration when valid; otherwise they fall back to the Home Assistant home location.",
           "data": {
-            "baseline_consumption": "Baseline consumption",
             "minimum_battery_reserve": "Minimum battery reserve",
             "safety_forecast_factor": "Safety forecast factor",
             "consumer_delay": "Consumer delay (normal mode ramp)",
@@ -117,7 +114,6 @@
             "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
           },
           "data_description": {
-            "baseline_consumption": "Estimated baseline house consumption in kW (average when no heavy consumers). Example: 0.8",
             "minimum_battery_reserve": "Emergency reserve as percent of battery capacity (0–100). Not used for consumers. Example: 20",
             "safety_forecast_factor": "Safety factor for daily solar forecast in percent (10–100). 90 = use 90% of forecast. Example: 90",
             "consumer_delay": "Delay in minutes between turning off one consumer in Normal mode (LIFO). Wasting uses 1 min (learned) / 5 min (still learning) between actions.",
