@@ -26,7 +26,6 @@
         "description": "Numeric settings and optional helpers. Latitude and longitude for the solar forecast are taken from your Home Assistant home location automatically (you can still correct them later by reconfiguring if needed). Defaults match the previous single-step setup.",
         "data": {
           "forecast_pr": "Forecast performance ratio",
-          "eod_battery_target": "End-of-day battery target",
           "max_battery_current_amps": "Max battery current",
           "discharge_limit_percent": "Discharge limit",
           "discharge_limit_deadband_percent": "Discharge limit deadband",
@@ -37,7 +36,6 @@
         },
         "data_description": {
           "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
-          "eod_battery_target": "Target battery level at end of day in percent (0–100). Example: 90",
           "max_battery_current_amps": "Max battery current in A (for charge/discharge state). Example: 36",
           "discharge_limit_percent": "Discharge limit as percent of max current (0–100). Example: 80",
           "discharge_limit_deadband_percent": "Deadband in percent below discharge limit before allowing turn-on again. Example: 5",
@@ -95,7 +93,6 @@
           "description": "Numeric settings and optional helpers. Latitude and longitude are kept from your existing configuration when valid; otherwise they fall back to the Home Assistant home location.",
           "data": {
             "forecast_pr": "Forecast performance ratio",
-            "eod_battery_target": "End-of-day battery target",
             "max_battery_current_amps": "Max battery current",
             "discharge_limit_percent": "Discharge limit",
             "discharge_limit_deadband_percent": "Discharge limit deadband",
@@ -106,7 +103,6 @@
           },
           "data_description": {
             "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
-            "eod_battery_target": "Target battery level at end of day in percent (0–100). Example: 90",
             "max_battery_current_amps": "Max battery current in A (for charge/discharge state). Example: 36",
             "discharge_limit_percent": "Discharge limit as percent of max current (0–100). Example: 80",
             "discharge_limit_deadband_percent": "Deadband in percent below discharge limit before allowing turn-on again. Example: 5",

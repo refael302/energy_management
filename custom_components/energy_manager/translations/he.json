@@ -26,7 +26,6 @@
         "description": "הגדרות מספריות ואופציות. קווי רוחב ואורך לתחזית שמש נלקחים אוטומטית ממיקום הבית ב־Home Assistant (ניתן לתקן בהמשך דרך הגדרה מחדש). ברירות המחדל זהות לשלב ההתקנה היחיד שהיה קודם.",
         "data": {
           "forecast_pr": "מקדם ביצועים לתחזית (PR)",
-          "eod_battery_target": "יעד סוללה לסוף יום",
           "max_battery_current_amps": "זרם סוללה מקסימלי",
           "discharge_limit_percent": "סף פריקה",
           "discharge_limit_deadband_percent": "אזור מת (deadband) לפריקה",
@@ -37,7 +36,6 @@
         },
         "data_description": {
           "forecast_pr": "מקדם המוחל על התחזית (בדרך כלל 0–1). דוגמה: 0.85",
-          "eod_battery_target": "יעד רמת סוללה בסוף היום באחוזים (0–100). דוגמה: 90",
           "max_battery_current_amps": "זרם סוללה מקסימלי ב־A (למצב טעינה/פריקה). דוגמה: 36",
           "discharge_limit_percent": "סף פריקה כאחוז מהזרם המקסימלי (0–100). דוגמה: 80",
           "discharge_limit_deadband_percent": "אזור מת באחוזים מתחת לסף הפריקה לפני הפעלה מחדש. דוגמה: 5",
@@ -95,7 +93,6 @@
           "description": "הגדרות מספריות ואופציות. קווי רוחב ואורך נשמרים מההגדרות הקיימות כשהם תקינים; אחרת נעשה שימוש במיקום הבית ב־Home Assistant.",
           "data": {
             "forecast_pr": "מקדם ביצועים לתחזית (PR)",
-            "eod_battery_target": "יעד סוללה לסוף יום",
             "max_battery_current_amps": "זרם סוללה מקסימלי",
             "discharge_limit_percent": "סף פריקה",
             "discharge_limit_deadband_percent": "אזור מת (deadband) לפריקה",
@@ -106,7 +103,6 @@
           },
           "data_description": {
             "forecast_pr": "מקדם המוחל על התחזית (בדרך כלל 0–1). דוגמה: 0.85",
-            "eod_battery_target": "יעד רמת סוללה בסוף היום באחוזים (0–100). דוגמה: 90",
             "max_battery_current_amps": "זרם סוללה מקסימלי ב־A (למצב טעינה/פריקה). דוגמה: 36",
             "discharge_limit_percent": "סף פריקה כאחוז מהזרם המקסימלי (0–100). דוגמה: 80",
             "discharge_limit_deadband_percent": "אזור מת באחוזים מתחת לסף הפריקה לפני הפעלה מחדש. דוגמה: 5",

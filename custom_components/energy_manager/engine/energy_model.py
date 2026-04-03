@@ -13,6 +13,7 @@ from ..const import (
     BASELINE_PROFILE_BOOTSTRAP_KW,
     BATTERY_SOC_VERY_LOW_PERCENT,
     DEFAULT_SAFETY_FORECAST_FACTOR,
+    EOD_BATTERY_TARGET_PLANNING_PERCENT,
     EMERGENCY_RESERVE_PLANNING_PERCENT,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW,
@@ -33,7 +34,7 @@ class EnergyModel:
 
     # Config (from entry)
     battery_capacity_kwh: float = 20.0
-    eod_battery_target_percent: float = 90.0
+    eod_battery_target_percent: float = EOD_BATTERY_TARGET_PLANNING_PERCENT
     emergency_reserve_percent: float = EMERGENCY_RESERVE_PLANNING_PERCENT
     safety_forecast_factor_percent: float = float(DEFAULT_SAFETY_FORECAST_FACTOR)
     max_battery_current_amps: float = 36.0

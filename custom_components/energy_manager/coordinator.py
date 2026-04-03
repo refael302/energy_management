@@ -40,7 +40,6 @@ from .const import (
     CONF_CONSUMER_SWITCHES,
     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     CONF_DISCHARGE_LIMIT_PERCENT,
-    CONF_EOD_BATTERY_TARGET,
     CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
@@ -59,7 +58,6 @@ from .const import (
     DEFAULT_BATTERY_CAPACITY,
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     DEFAULT_DISCHARGE_LIMIT_PERCENT,
-    DEFAULT_EOD_BATTERY_TARGET,
     DEFAULT_FORECAST_PR,
     DEFAULT_INVERTER_SIZE_KW,
     DEFAULT_LATITUDE,
@@ -67,6 +65,7 @@ from .const import (
     DEFAULT_MAX_BATTERY_CURRENT_AMPS,
     DEFAULT_SAFETY_FORECAST_FACTOR,
     DOMAIN,
+    EOD_BATTERY_TARGET_PLANNING_PERCENT,
     EMERGENCY_RESERVE_PLANNING_PERCENT,
     FORECAST_STRATEGY_CACHE_MINUTES,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
@@ -166,7 +165,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.model = EnergyModel(
             battery_capacity_kwh=float(data.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY)),
-            eod_battery_target_percent=float(data.get(CONF_EOD_BATTERY_TARGET, DEFAULT_EOD_BATTERY_TARGET)),
+            eod_battery_target_percent=float(EOD_BATTERY_TARGET_PLANNING_PERCENT),
             emergency_reserve_percent=float(EMERGENCY_RESERVE_PLANNING_PERCENT),
             safety_forecast_factor_percent=float(DEFAULT_SAFETY_FORECAST_FACTOR),
             max_battery_current_amps=float(data.get(CONF_MAX_BATTERY_CURRENT_AMPS, DEFAULT_MAX_BATTERY_CURRENT_AMPS)),

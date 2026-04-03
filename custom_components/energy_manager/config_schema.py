@@ -22,7 +22,6 @@ from .const import (
     CONF_CONSUMER_SWITCHES,
     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     CONF_DISCHARGE_LIMIT_PERCENT,
-    CONF_EOD_BATTERY_TARGET,
     CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
@@ -37,7 +36,6 @@ from .const import (
     DEFAULT_BATTERY_CAPACITY,
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     DEFAULT_DISCHARGE_LIMIT_PERCENT,
-    DEFAULT_EOD_BATTERY_TARGET,
     DEFAULT_FORECAST_PR,
     DEFAULT_INVERTER_SIZE_KW,
     DEFAULT_LATITUDE,
@@ -148,10 +146,6 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
                 CONF_FORECAST_PR,
                 default=base.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR),
             ): vol.Coerce(float),
-            vol.Required(
-                CONF_EOD_BATTERY_TARGET,
-                default=base.get(CONF_EOD_BATTERY_TARGET, DEFAULT_EOD_BATTERY_TARGET),
-            ): vol.Coerce(int),
             vol.Required(
                 CONF_MAX_BATTERY_CURRENT_AMPS,
                 default=base.get(

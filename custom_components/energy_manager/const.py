@@ -57,6 +57,8 @@ EMERGENCY_RESERVE_OFFSET_ABOVE_VERY_LOW_PERCENT = 5
 EMERGENCY_RESERVE_PLANNING_PERCENT = float(
     BATTERY_SOC_VERY_LOW_PERCENT + EMERGENCY_RESERVE_OFFSET_ABOVE_VERY_LOW_PERCENT
 )
+# Planning target for end of local day (% SOC). Matches EnergyModel battery_status "full" (SOC >= 95).
+EOD_BATTERY_TARGET_PLANNING_PERCENT = 95.0
 
 # Energy mode (energy_saver equivalent)
 MODE_OFF = "Off"
@@ -100,7 +102,6 @@ CONF_STRINGS = "strings"
 CONF_SYSTEM_SIZE_KW = "system_size_kw"
 CONF_TILT = "tilt"
 CONF_AZIMUTH = "azimuth"
-CONF_EOD_BATTERY_TARGET = "eod_battery_target"
 CONF_MAX_BATTERY_CURRENT_AMPS = "max_battery_current_amps"
 CONF_DISCHARGE_LIMIT_PERCENT = "discharge_limit_percent"
 CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT = "discharge_limit_deadband_percent"
@@ -125,7 +126,6 @@ BASELINE_PROFILE_BOOTSTRAP_KW = 0.5
 BASELINE_PROFILE_WINDOW_DAYS = 7
 # PV forecast safety margin (percent of Open-Meteo kWh); fixed — not user-configurable
 DEFAULT_SAFETY_FORECAST_FACTOR = 90
-DEFAULT_EOD_BATTERY_TARGET = 90
 DEFAULT_MAX_BATTERY_CURRENT_AMPS = 36
 DEFAULT_DISCHARGE_LIMIT_PERCENT = 80
 DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT = 5

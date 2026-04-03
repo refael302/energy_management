@@ -22,6 +22,7 @@ _LEGACY_BASELINE_CONSUMPTION = "baseline_consumption"
 _LEGACY_MINIMUM_BATTERY_RESERVE = "minimum_battery_reserve"
 _LEGACY_SAFETY_FORECAST_FACTOR = "safety_forecast_factor"
 _LEGACY_CONSUMER_DELAY = "consumer_delay"
+_LEGACY_EOD_BATTERY_TARGET = "eod_battery_target"
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT]
 
@@ -100,6 +101,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data.pop(_LEGACY_CONSUMER_DELAY, None)
         options.pop(_LEGACY_CONSUMER_DELAY, None)
         current = 5
+
+    if current < 6:
+        data.pop(_LEGACY_EOD_BATTERY_TARGET, None)
+        options.pop(_LEGACY_EOD_BATTERY_TARGET, None)
+        current = 6
 
     hass.config_entries.async_update_entry(
         entry,
