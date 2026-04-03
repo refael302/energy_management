@@ -32,7 +32,6 @@ from .const import (
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_MAX_BATTERY_CURRENT_AMPS,
-    CONF_SAFETY_FORECAST_FACTOR,
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
@@ -46,7 +45,6 @@ from .const import (
     DEFAULT_LATITUDE,
     DEFAULT_LONGITUDE,
     DEFAULT_MAX_BATTERY_CURRENT_AMPS,
-    DEFAULT_SAFETY_FORECAST_FACTOR,
     DEFAULT_SYSTEM_SIZE_KW,
     DEFAULT_TILT,
     DEFAULT_AZIMUTH,
@@ -148,12 +146,6 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
     """Step 2: numeric params and optional entities. Lat/lon are set in the flow."""
     return vol.Schema(
         {
-            vol.Required(
-                CONF_SAFETY_FORECAST_FACTOR,
-                default=base.get(
-                    CONF_SAFETY_FORECAST_FACTOR, DEFAULT_SAFETY_FORECAST_FACTOR
-                ),
-            ): vol.Coerce(int),
             vol.Required(
                 CONF_CONSUMER_DELAY,
                 default=base.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY),

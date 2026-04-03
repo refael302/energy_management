@@ -20,6 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 # Keys removed from config; strip from existing entries on migrate
 _LEGACY_BASELINE_CONSUMPTION = "baseline_consumption"
 _LEGACY_MINIMUM_BATTERY_RESERVE = "minimum_battery_reserve"
+_LEGACY_SAFETY_FORECAST_FACTOR = "safety_forecast_factor"
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT]
 
@@ -71,9 +72,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Upgrade stored config: v1→v2 drop baseline_consumption; v2→v3 drop minimum_battery_reserve."""
+    """Config upgrades: v2 baseline; v3 battery reserve; v4 safety forecast factor (fixed in code)."""
     current = entry.version
-    if current >= 3:
+    if current >= 4:
         return True
 
     data = {**entry.data}
@@ -88,6 +89,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data.pop(_LEGACY_MINIMUM_BATTERY_RESERVE, None)
         options.pop(_LEGACY_MINIMUM_BATTERY_RESERVE, None)
         current = 3
+
+    if current < 4:
+        data.pop(_LEGACY_SAFETY_FORECAST_FACTOR, None)
+        options.pop(_LEGACY_SAFETY_FORECAST_FACTOR, None)
+        current = 4
 
     hass.config_entries.async_update_entry(
         entry,

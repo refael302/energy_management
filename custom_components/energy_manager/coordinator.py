@@ -54,7 +54,6 @@ from .const import (
     CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_LONGITUDE,
     CONF_MAX_BATTERY_CURRENT_AMPS,
-    CONF_SAFETY_FORECAST_FACTOR,
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_STRINGS,
     DEFAULT_BATTERY_CAPACITY,
@@ -170,7 +169,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             battery_capacity_kwh=float(data.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY)),
             eod_battery_target_percent=float(data.get(CONF_EOD_BATTERY_TARGET, DEFAULT_EOD_BATTERY_TARGET)),
             emergency_reserve_percent=float(EMERGENCY_RESERVE_PLANNING_PERCENT),
-            safety_forecast_factor_percent=float(data.get(CONF_SAFETY_FORECAST_FACTOR, DEFAULT_SAFETY_FORECAST_FACTOR)),
+            safety_forecast_factor_percent=float(DEFAULT_SAFETY_FORECAST_FACTOR),
             max_battery_current_amps=float(data.get(CONF_MAX_BATTERY_CURRENT_AMPS, DEFAULT_MAX_BATTERY_CURRENT_AMPS)),
             discharge_limit_percent=float(data.get(CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT)),
             discharge_limit_deadband_percent=float(

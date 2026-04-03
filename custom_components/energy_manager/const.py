@@ -93,7 +93,6 @@ CONF_SOLAR_PRODUCTION_SENSOR = "solar_production_sensor"
 CONF_HOUSE_CONSUMPTION_SENSOR = "house_consumption_sensor"
 CONF_CONSUMER_SWITCHES = "consumer_switches"
 CONF_BATTERY_CAPACITY = "battery_capacity"
-CONF_SAFETY_FORECAST_FACTOR = "safety_forecast_factor"
 CONF_CONSUMER_DELAY = "consumer_delay"
 CONF_LATITUDE = "latitude"
 CONF_LONGITUDE = "longitude"
@@ -124,6 +123,7 @@ DEFAULT_BATTERY_CAPACITY = 20.0
 # Learned hourly baseline: bootstrap kW per hour until enough completed days; rolling window length
 BASELINE_PROFILE_BOOTSTRAP_KW = 0.5
 BASELINE_PROFILE_WINDOW_DAYS = 7
+# PV forecast safety margin (percent of Open-Meteo kWh); fixed — not user-configurable
 DEFAULT_SAFETY_FORECAST_FACTOR = 90
 DEFAULT_CONSUMER_DELAY = 5
 DEFAULT_EOD_BATTERY_TARGET = 90
