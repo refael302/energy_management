@@ -25,7 +25,6 @@
         "title": "Advanced parameters",
         "description": "Numeric settings and optional helpers. Latitude and longitude for the solar forecast are taken from your Home Assistant home location automatically (you can still correct them later by reconfiguring if needed). Defaults match the previous single-step setup.",
         "data": {
-          "consumer_delay": "Consumer delay (normal mode ramp)",
           "forecast_pr": "Forecast performance ratio",
           "eod_battery_target": "End-of-day battery target",
           "max_battery_current_amps": "Max battery current",
@@ -37,7 +36,6 @@
           "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
         },
         "data_description": {
-          "consumer_delay": "Delay in minutes between turning off one consumer in Normal mode (LIFO). Wasting mode uses 1 min between learned consumers and 5 min when still learning.",
           "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
           "eod_battery_target": "Target battery level at end of day in percent (0–100). Example: 90",
           "max_battery_current_amps": "Max battery current in A (for charge/discharge state). Example: 36",
@@ -96,7 +94,6 @@
           "title": "Advanced parameters",
           "description": "Numeric settings and optional helpers. Latitude and longitude are kept from your existing configuration when valid; otherwise they fall back to the Home Assistant home location.",
           "data": {
-            "consumer_delay": "Consumer delay (normal mode ramp)",
             "forecast_pr": "Forecast performance ratio",
             "eod_battery_target": "End-of-day battery target",
             "max_battery_current_amps": "Max battery current",
@@ -108,7 +105,6 @@
             "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
           },
           "data_description": {
-            "consumer_delay": "Delay in minutes between turning off one consumer in Normal mode (LIFO). Wasting uses 1 min (learned) / 5 min (still learning) between actions.",
             "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
             "eod_battery_target": "Target battery level at end of day in percent (0–100). Example: 90",
             "max_battery_current_amps": "Max battery current in A (for charge/discharge state). Example: 36",

@@ -27,6 +27,7 @@ from .engine.forecast_cache import (
 )
 from .const import (
     BATTERY_RUNTIME_MIN_SOC_PERCENT,
+    CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
     STRATEGY_MEDIUM,
     DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
     DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
@@ -36,7 +37,6 @@ from .const import (
     CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
-    CONF_CONSUMER_DELAY,
     CONF_CONSUMER_SWITCHES,
     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     CONF_DISCHARGE_LIMIT_PERCENT,
@@ -57,7 +57,6 @@ from .const import (
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_STRINGS,
     DEFAULT_BATTERY_CAPACITY,
-    DEFAULT_CONSUMER_DELAY,
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     DEFAULT_DISCHARGE_LIMIT_PERCENT,
     DEFAULT_EOD_BATTERY_TARGET,
@@ -202,7 +201,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             consumer_switches,
             lights,
-            int(data.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY)),
+            CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
             schedule_consumer_learn=self._schedule_consumer_learn,
         )
         self._entity_ids = {

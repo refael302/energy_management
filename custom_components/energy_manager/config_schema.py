@@ -19,7 +19,6 @@ from .const import (
     CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
-    CONF_CONSUMER_DELAY,
     CONF_CONSUMER_SWITCHES,
     CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     CONF_DISCHARGE_LIMIT_PERCENT,
@@ -36,7 +35,6 @@ from .const import (
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
     DEFAULT_BATTERY_CAPACITY,
-    DEFAULT_CONSUMER_DELAY,
     DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
     DEFAULT_DISCHARGE_LIMIT_PERCENT,
     DEFAULT_EOD_BATTERY_TARGET,
@@ -146,10 +144,6 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
     """Step 2: numeric params and optional entities. Lat/lon are set in the flow."""
     return vol.Schema(
         {
-            vol.Required(
-                CONF_CONSUMER_DELAY,
-                default=base.get(CONF_CONSUMER_DELAY, DEFAULT_CONSUMER_DELAY),
-            ): vol.Coerce(int),
             vol.Required(
                 CONF_FORECAST_PR,
                 default=base.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR),

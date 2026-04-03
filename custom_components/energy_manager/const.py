@@ -7,7 +7,8 @@ NAME = "Energy Manager"
 SERVICE_RESET_CONSUMER_LEARN = "reset_consumer_learn"
 
 # Consumer power learning (house meter delta when integration turns a consumer on)
-# Delay between consumer actions: learned vs not yet learned (minutes; hardcoded, not user-facing)
+# Delay between consumer actions in wasting (minutes; not user-facing): learned vs unlearned.
+# Unlearned interval is also used between turn-offs in Normal mode (LIFO ramp-down).
 CONSUMER_ACTION_DELAY_LEARNED_MINUTES = 1
 CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES = 5
 # Hysteresis: only adopt new raw budget if relative change >= this ratio vs last locked budget
@@ -93,7 +94,6 @@ CONF_SOLAR_PRODUCTION_SENSOR = "solar_production_sensor"
 CONF_HOUSE_CONSUMPTION_SENSOR = "house_consumption_sensor"
 CONF_CONSUMER_SWITCHES = "consumer_switches"
 CONF_BATTERY_CAPACITY = "battery_capacity"
-CONF_CONSUMER_DELAY = "consumer_delay"
 CONF_LATITUDE = "latitude"
 CONF_LONGITUDE = "longitude"
 CONF_STRINGS = "strings"
@@ -125,7 +125,6 @@ BASELINE_PROFILE_BOOTSTRAP_KW = 0.5
 BASELINE_PROFILE_WINDOW_DAYS = 7
 # PV forecast safety margin (percent of Open-Meteo kWh); fixed — not user-configurable
 DEFAULT_SAFETY_FORECAST_FACTOR = 90
-DEFAULT_CONSUMER_DELAY = 5
 DEFAULT_EOD_BATTERY_TARGET = 90
 DEFAULT_MAX_BATTERY_CURRENT_AMPS = 36
 DEFAULT_DISCHARGE_LIMIT_PERCENT = 80
