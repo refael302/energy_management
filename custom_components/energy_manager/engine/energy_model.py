@@ -11,6 +11,8 @@ from typing import Any
 
 from ..const import (
     BASELINE_PROFILE_BOOTSTRAP_KW,
+    BATTERY_SOC_VERY_LOW_PERCENT,
+    EMERGENCY_RESERVE_PLANNING_PERCENT,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW,
 )
@@ -31,7 +33,7 @@ class EnergyModel:
     # Config (from entry)
     battery_capacity_kwh: float = 20.0
     eod_battery_target_percent: float = 90.0
-    emergency_reserve_percent: float = 20.0
+    emergency_reserve_percent: float = EMERGENCY_RESERVE_PLANNING_PERCENT
     safety_forecast_factor_percent: float = 90.0
     max_battery_current_amps: float = 36.0
     discharge_limit_percent: float = 80.0
@@ -77,7 +79,7 @@ class EnergyModel:
         self._night_bridge(now_local)
 
     def _battery_status(self) -> None:
-        if self.battery_soc < 15:
+        if self.battery_soc < BATTERY_SOC_VERY_LOW_PERCENT:
             self.battery_status = "very low"
         elif self.battery_soc < 30:
             self.battery_status = "low"

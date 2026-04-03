@@ -17,8 +17,9 @@ from .engine.consumer_learn_cache import consumer_learn_fingerprint
 
 _LOGGER = logging.getLogger(__name__)
 
-# Removed from config in v2; strip from existing entries on migrate
+# Keys removed from config; strip from existing entries on migrate
 _LEGACY_BASELINE_CONSUMPTION = "baseline_consumption"
+_LEGACY_MINIMUM_BATTERY_RESERVE = "minimum_battery_reserve"
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT]
 
@@ -70,18 +71,29 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Drop legacy baseline_consumption; hourly profile is learned automatically."""
-    if entry.version > 1:
+    """Upgrade stored config: v1→v2 drop baseline_consumption; v2→v3 drop minimum_battery_reserve."""
+    current = entry.version
+    if current >= 3:
         return True
+
     data = {**entry.data}
-    data.pop(_LEGACY_BASELINE_CONSUMPTION, None)
     options = dict(entry.options) if entry.options else {}
-    options.pop(_LEGACY_BASELINE_CONSUMPTION, None)
+
+    if current < 2:
+        data.pop(_LEGACY_BASELINE_CONSUMPTION, None)
+        options.pop(_LEGACY_BASELINE_CONSUMPTION, None)
+        current = 2
+
+    if current < 3:
+        data.pop(_LEGACY_MINIMUM_BATTERY_RESERVE, None)
+        options.pop(_LEGACY_MINIMUM_BATTERY_RESERVE, None)
+        current = 3
+
     hass.config_entries.async_update_entry(
         entry,
         data=data,
         options=options if options else None,
-        version=2,
+        version=current,
     )
     return True
 

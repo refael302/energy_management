@@ -44,11 +44,18 @@ STRATEGY_FULL = "full"
 STRATEGY_OPTIONS = [STRATEGY_LOW, STRATEGY_MEDIUM, STRATEGY_HIGH, STRATEGY_FULL]
 
 # Battery status levels (from PV Battery Status logic)
-BATTERY_VERY_LOW = "very low"   # < 15%
-BATTERY_LOW = "low"             # < 30%
-BATTERY_MEDIUM = "medium"       # < 70%
-BATTERY_HIGH = "high"           # < 95%
-BATTERY_FULL = "full"           # >= 95%
+BATTERY_VERY_LOW = "very low"
+BATTERY_LOW = "low"
+BATTERY_MEDIUM = "medium"
+BATTERY_HIGH = "high"
+BATTERY_FULL = "full"
+# SOC % below which status is BATTERY_VERY_LOW (also base for emergency planning reserve)
+BATTERY_SOC_VERY_LOW_PERCENT = 15
+# Planning emergency reserve (needed_energy_today, night bridge) = very_low_threshold + this (not user-config)
+EMERGENCY_RESERVE_OFFSET_ABOVE_VERY_LOW_PERCENT = 5
+EMERGENCY_RESERVE_PLANNING_PERCENT = float(
+    BATTERY_SOC_VERY_LOW_PERCENT + EMERGENCY_RESERVE_OFFSET_ABOVE_VERY_LOW_PERCENT
+)
 
 # Energy mode (energy_saver equivalent)
 MODE_OFF = "Off"
@@ -86,7 +93,6 @@ CONF_SOLAR_PRODUCTION_SENSOR = "solar_production_sensor"
 CONF_HOUSE_CONSUMPTION_SENSOR = "house_consumption_sensor"
 CONF_CONSUMER_SWITCHES = "consumer_switches"
 CONF_BATTERY_CAPACITY = "battery_capacity"
-CONF_MINIMUM_BATTERY_RESERVE = "minimum_battery_reserve"
 CONF_SAFETY_FORECAST_FACTOR = "safety_forecast_factor"
 CONF_CONSUMER_DELAY = "consumer_delay"
 CONF_LATITUDE = "latitude"
@@ -114,7 +120,6 @@ CONF_FORECAST_PR = "forecast_pr"
 DEFAULT_LATITUDE = 32.08
 DEFAULT_LONGITUDE = 34.78
 DEFAULT_BATTERY_CAPACITY = 20.0
-DEFAULT_MINIMUM_BATTERY_RESERVE = 20
 
 # Learned hourly baseline: bootstrap kW per hour until enough completed days; rolling window length
 BASELINE_PROFILE_BOOTSTRAP_KW = 0.5
