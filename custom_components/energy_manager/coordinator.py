@@ -5,6 +5,7 @@ Data coordinator – polls sensors and forecast every 30s, runs decision engine 
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -29,6 +30,11 @@ from .engine.forecast_cache import (
 from .const import (
     BATTERY_SOC_VERY_LOW_PERCENT,
     CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
+    DATA_INTEGRATION_ALERT_LAST,
+    DATA_INTEGRATION_ALERTS,
+    DATA_INTEGRATION_ALERTS_DISPLAY,
+    INTEGRATION_ALERTS_MAX,
+    INTEGRATION_ALERTS_DISPLAY_MAX,
     STRATEGY_MEDIUM,
     DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
     SYSTEM_MODE_NORMAL,
@@ -232,6 +238,75 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._locked_consumer_budget_kw: float | None = None
         self._ops_prev_system_mode: str | None = None
         self._ops_prev_strategy: str | None = None
+        self._integration_alerts: deque[dict[str, Any]] = deque(maxlen=INTEGRATION_ALERTS_MAX)
+        self._integration_alert_seq: int = 0
+
+    @staticmethod
+    def _integration_alert_fingerprint(
+        level: str,
+        category: str,
+        event: str,
+        summary: str,
+        context: dict[str, Any],
+    ) -> tuple[Any, ...]:
+        """Identity for dedupe: same logical alert is not stored twice while it remains in the deque."""
+        ctx_items = tuple(sorted((k, str(v)) for k, v in sorted(context.items())))
+        return (level, category, event, summary, ctx_items)
+
+    def _integration_alert_fingerprint_stored(self, alert: dict[str, Any]) -> tuple[Any, ...]:
+        ctx = alert.get("context")
+        if not isinstance(ctx, dict):
+            ctx = {}
+        return self._integration_alert_fingerprint(
+            str(alert.get("level", "")),
+            str(alert.get("category", "")),
+            str(alert.get("event", "")),
+            str(alert.get("summary", "")),
+            dict(ctx),
+        )
+
+    def _integration_alert_data(self) -> dict[str, Any]:
+        """Keys merged into coordinator.data for the last-alert sensor."""
+        last = self._integration_alerts[-1] if self._integration_alerts else None
+        full_list = list(self._integration_alerts)
+        display = full_list[-INTEGRATION_ALERTS_DISPLAY_MAX:]
+        return {
+            DATA_INTEGRATION_ALERT_LAST: last,
+            DATA_INTEGRATION_ALERTS: full_list,
+            DATA_INTEGRATION_ALERTS_DISPLAY: display,
+        }
+
+    def push_integration_alert(self, record: dict[str, Any]) -> None:
+        """Append one ops-log record to the in-memory ring and refresh coordinator data."""
+        ctx = record.get("context")
+        if not isinstance(ctx, dict):
+            ctx = {}
+        ctx = dict(ctx)
+        level = str(record.get("level", ""))
+        category = str(record.get("category", ""))
+        event = str(record.get("event", ""))
+        summary = str(record.get("summary", ""))
+        fp = self._integration_alert_fingerprint(level, category, event, summary, ctx)
+        if any(self._integration_alert_fingerprint_stored(a) == fp for a in self._integration_alerts):
+            return
+        self._integration_alert_seq += 1
+        full: dict[str, Any] = {
+            "ts_iso": str(record.get("ts_iso", "")),
+            "level": level,
+            "category": category,
+            "event": event,
+            "summary": summary,
+            "context": ctx,
+            "seq": self._integration_alert_seq,
+        }
+        self._integration_alerts.append(full)
+        self.async_set_updated_data({**(self.data or {}), **self._integration_alert_data()})
+
+    def clear_integration_alerts(self) -> None:
+        """Clear the in-memory alert ring (e.g. after user dismisses in UI)."""
+        self._integration_alerts.clear()
+        self._integration_alert_seq = 0
+        self.async_set_updated_data({**(self.data or {}), **self._integration_alert_data()})
 
     def _schedule_consumer_learn(self, entity_id: str, baseline_w: float) -> None:
         """After integration turns a consumer on, sample house meter delta (async)."""
@@ -862,6 +937,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if (manual_d > 0 or manual_c > 0)
                     else "auto"
                 ),
+                **self._integration_alert_data(),
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)

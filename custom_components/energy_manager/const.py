@@ -13,8 +13,20 @@ INTEGRATION_LOG_DEDUPE_CATEGORIES = frozenset({"FORECAST", "SYSTEM"})
 INTEGRATION_LOG_SUMMARY_MAX_LEN = 200
 INTEGRATION_LOG_CONTEXT_MAX_LEN = 480
 
+# In-memory alert feed (mirrors successful ops log writes) + last-alert sensor
+INTEGRATION_ALERTS_MAX = 20
+INTEGRATION_ALERTS_DISPLAY_MAX = 10
+DATA_INTEGRATION_ALERT_LAST = "integration_alert_last"
+DATA_INTEGRATION_ALERTS = "integration_alerts"
+DATA_INTEGRATION_ALERTS_DISPLAY = "integration_alerts_display"
+# Sensor entity key (unique_id suffix)
+SENSOR_KEY_INTEGRATION_LAST_ALERT = "integration_last_alert"
+INTEGRATION_ALERT_STATE_MAX_LEN = 255
+
 # Service: clear learned per-consumer power (optional manual reset)
 SERVICE_RESET_CONSUMER_LEARN = "reset_consumer_learn"
+# Service: clear in-memory integration alert ring buffer
+SERVICE_CLEAR_INTEGRATION_ALERTS = "clear_integration_alerts"
 
 # Consumer power learning (house meter delta when integration turns a consumer on)
 # Delay between consumer actions in wasting (minutes; not user-facing): learned vs unlearned.

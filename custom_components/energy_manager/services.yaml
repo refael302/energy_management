@@ -9,3 +9,14 @@ reset_consumer_learn:
       required: false
       selector:
         text:
+
+clear_integration_alerts:
+  name: Clear integration alerts
+  description: Clears the in-memory alert buffer (last-alert sensor) for Energy Manager.
+  fields:
+    config_entry_id:
+      name: Config entry ID
+      description: Optional. Target one Energy Manager entry; omit to clear all.
+      required: false
+      selector:
+        text:

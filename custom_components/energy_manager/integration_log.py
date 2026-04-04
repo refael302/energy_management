@@ -46,6 +46,26 @@ from .const import (
     INTEGRATION_LOG_SUMMARY_MAX_LEN,
 )
 
+
+def _notify_coordinator_integration_alerts(
+    hass: HomeAssistant, entry_id: str, records: list[dict[str, Any]]
+) -> None:
+    """Push structured log records to the coordinator in-memory ring (no circular import)."""
+    if not records:
+        return
+    domain_data = hass.data.get(DOMAIN)
+    if not isinstance(domain_data, dict):
+        return
+    coord = domain_data.get(entry_id)
+    push = getattr(coord, "push_integration_alert", None)
+    if not callable(push):
+        return
+    for rec in records:
+        try:
+            push(rec)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("push_integration_alert failed: %s", err)
+
 _LOGGER = logging.getLogger(__name__)
 
 _VALID_LEVELS = frozenset({"INFO", "WARN", "ERROR"})
@@ -176,6 +196,7 @@ async def async_log_event(
         ek = (entry_id, dk)
 
         extra_lines: list[str] = []
+        records_to_push: list[dict[str, Any]] = []
 
         if category in INTEGRATION_LOG_DEDUPE_CATEGORIES:
             last_t = _last_write_mono.get(ek)
@@ -201,6 +222,20 @@ async def async_log_event(
                         },
                     )
                 )
+                records_to_push.append(
+                    {
+                        "ts_iso": ts_sup,
+                        "level": "INFO",
+                        "category": category,
+                        "event": "events_suppressed",
+                        "summary": f"Repeated {event} suppressed while throttling",
+                        "context": {
+                            "reason_code": "dedupe",
+                            "suppressed_count": str(sup),
+                            "parent_event": event,
+                        },
+                    }
+                )
 
         from homeassistant.util import dt as dt_util
 
@@ -211,5 +246,16 @@ async def async_log_event(
         path = _ops_log_path(hass, entry_id)
         await hass.async_add_executor_job(_append_lines_sync, path, entry_id, all_lines)
         _last_write_mono[ek] = now_mono
+        records_to_push.append(
+            {
+                "ts_iso": ts_iso,
+                "level": level,
+                "category": category,
+                "event": event,
+                "summary": summary,
+                "context": ctx if ctx else {},
+            }
+        )
+        _notify_coordinator_integration_alerts(hass, entry_id, records_to_push)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("integration_log async_log_event failed: %s", err)

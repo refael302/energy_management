@@ -137,6 +137,16 @@
           "description": "Energy Manager config entry id. Leave empty to reset all instances."
         }
       }
+    },
+    "clear_integration_alerts": {
+      "name": "Clear integration alerts",
+      "description": "Clears the in-memory alert ring buffer for Energy Manager (last-alert sensor).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Energy Manager config entry id. Leave empty to clear all instances."
+        }
+      }
     }
   }
 }

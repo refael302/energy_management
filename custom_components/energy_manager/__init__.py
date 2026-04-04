@@ -11,7 +11,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr, entity_registry as er
 
-from .const import DOMAIN, NAME, SERVICE_RESET_CONSUMER_LEARN
+from .const import DOMAIN, NAME, SERVICE_CLEAR_INTEGRATION_ALERTS, SERVICE_RESET_CONSUMER_LEARN
 from .coordinator import EnergyManagerCoordinator
 from .engine.consumer_learn_cache import consumer_learn_fingerprint
 
@@ -34,11 +34,12 @@ RESET_CONSUMER_LEARN_SCHEMA = vol.Schema(
     {vol.Optional("config_entry_id"): cv.string}
 )
 
+CLEAR_INTEGRATION_ALERTS_SCHEMA = vol.Schema(
+    {vol.Optional("config_entry_id"): cv.string}
+)
+
 
 async def _async_register_services(hass: HomeAssistant) -> None:
-    if hass.services.has_service(DOMAIN, SERVICE_RESET_CONSUMER_LEARN):
-        return
-
     async def handle_reset_consumer_learn(call: ServiceCall) -> None:
         entry_id = call.data.get("config_entry_id")
         domain_data = hass.data.get(DOMAIN)
@@ -69,12 +70,40 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                     }
                 )
 
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_RESET_CONSUMER_LEARN,
-        handle_reset_consumer_learn,
-        schema=RESET_CONSUMER_LEARN_SCHEMA,
-    )
+    if not hass.services.has_service(DOMAIN, SERVICE_RESET_CONSUMER_LEARN):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_RESET_CONSUMER_LEARN,
+            handle_reset_consumer_learn,
+            schema=RESET_CONSUMER_LEARN_SCHEMA,
+        )
+
+    async def handle_clear_integration_alerts(call: ServiceCall) -> None:
+        entry_id = call.data.get("config_entry_id")
+        domain_data = hass.data.get(DOMAIN)
+        if not isinstance(domain_data, dict):
+            return
+        if entry_id:
+            targets = [entry_id] if entry_id in domain_data else []
+        else:
+            targets = [
+                k
+                for k, v in domain_data.items()
+                if isinstance(k, str) and hasattr(v, "clear_integration_alerts")
+            ]
+        for eid in targets:
+            coord = domain_data.get(eid)
+            if coord is None or not hasattr(coord, "clear_integration_alerts"):
+                continue
+            coord.clear_integration_alerts()
+
+    if not hass.services.has_service(DOMAIN, SERVICE_CLEAR_INTEGRATION_ALERTS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CLEAR_INTEGRATION_ALERTS,
+            handle_clear_integration_alerts,
+            schema=CLEAR_INTEGRATION_ALERTS_SCHEMA,
+        )
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

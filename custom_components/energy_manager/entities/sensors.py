@@ -25,9 +25,13 @@ from ..const import (
     BATTERY_POWER_STATE_OFF,
     BATTERY_POWER_STATE_OPTIONS,
     BATTERY_SOC_VERY_LOW_PERCENT,
+    DATA_INTEGRATION_ALERT_LAST,
+    DATA_INTEGRATION_ALERTS_DISPLAY,
     DOMAIN,
     EOD_BATTERY_TARGET_PLANNING_PERCENT,
+    INTEGRATION_ALERT_STATE_MAX_LEN,
     NAME,
+    SENSOR_KEY_INTEGRATION_LAST_ALERT,
 )
 from ..coordinator import EnergyManagerCoordinator
 
@@ -71,6 +75,7 @@ async def async_setup_entry(
             EnergyManagerBatteryTimeToFullSensor(coordinator, entry),
             EnergyManagerConsumerLearnedPowerSensor(coordinator, entry),
             EnergyManagerBaselineForecastSensor(coordinator, entry),
+            EnergyManagerLastAlertSensor(coordinator, entry),
         ]
     )
 
@@ -698,6 +703,53 @@ class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
             self._attr_extra_state_attributes = {
                 "consumers_kw": data.get("consumer_learned_kw") or {},
                 "pending_samples": data.get("consumer_learn_pending_samples") or {},
+            }
+        self.async_write_ha_state()
+
+
+class EnergyManagerLastAlertSensor(EnergyManagerSensorBase):
+    """Most recent integration ops-log event, updated immediately when a new line is logged."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            SENSOR_KEY_INTEGRATION_LAST_ALERT,
+            "Last integration alert",
+            icon="mdi:bell-ring-outline",
+        )
+        self._attr_unique_id = f"{entry.entry_id}_{SENSOR_KEY_INTEGRATION_LAST_ALERT}"
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        rec = data.get(DATA_INTEGRATION_ALERT_LAST) if data else None
+        if not rec:
+            self._attr_native_value = ""
+            self._attr_extra_state_attributes = {
+                "event": None,
+                "level": None,
+                "category": None,
+                "seq": None,
+                "ts_iso": None,
+                "summary": None,
+                "context": {},
+                "alerts": [],
+            }
+        else:
+            text = f"[{rec.get('level', '')}] {rec.get('summary', '')} (#{rec.get('seq', '')})"
+            if len(text) > INTEGRATION_ALERT_STATE_MAX_LEN:
+                text = text[: INTEGRATION_ALERT_STATE_MAX_LEN - 1] + "…"
+            self._attr_native_value = text
+            self._attr_extra_state_attributes = {
+                "event": rec.get("event"),
+                "level": rec.get("level"),
+                "category": rec.get("category"),
+                "seq": rec.get("seq"),
+                "ts_iso": rec.get("ts_iso"),
+                "summary": rec.get("summary"),
+                "context": rec.get("context") or {},
+                "alerts": data.get(DATA_INTEGRATION_ALERTS_DISPLAY) or [],
             }
         self.async_write_ha_state()
 

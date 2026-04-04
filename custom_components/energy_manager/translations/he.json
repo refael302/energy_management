@@ -137,6 +137,16 @@
           "description": "מזהה ה-config entry של Energy Manager. השאר ריק לאיפוס כל המופעים."
         }
       }
+    },
+    "clear_integration_alerts": {
+      "name": "ניקוי התראות האינטגרציה",
+      "description": "מנקה את תור ההתראות בזיכרון (חיישן ההתראה האחרונה).",
+      "fields": {
+        "config_entry_id": {
+          "name": "מזהה רשומת הגדרות",
+          "description": "מזהה ה-config entry של Energy Manager. השאר ריק לניקוי כל המופעים."
+        }
+      }
     }
   }
 }
