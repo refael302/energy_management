@@ -56,6 +56,7 @@ async def async_setup_entry(
             EnergyManagerStrategyReasonSensor(coordinator, entry),
             EnergyManagerChargeStateSensor(coordinator, entry),
             EnergyManagerDischargeStateSensor(coordinator, entry),
+            EnergyManagerBatteryPowerLimitsSensor(coordinator, entry),
             EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
             EnergyManagerConsumersOnSensor(coordinator, entry),
             EnergyManagerBatteryRuntimeSensor(coordinator, entry),
@@ -511,6 +512,39 @@ class EnergyManagerDischargeStateSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data:
             self._attr_native_value = data.get("discharge_state", "unknown")
+        self.async_write_ha_state()
+
+
+class EnergyManagerBatteryPowerLimitsSensor(EnergyManagerSensorBase):
+    """Effective max discharge power (kW) from learned peaks; charge peak and learn metadata in attributes."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "battery_power_limits",
+            "Battery power limits",
+            icon="mdi:battery-charging-high",
+            device_class=SensorDeviceClass.POWER,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfPower.KILOWATTS,
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("battery_effective_max_discharge_kw")
+            self._attr_extra_state_attributes = {
+                "effective_max_charge_kw": data.get("battery_effective_max_charge_kw"),
+                "learned_max_discharge_kw": data.get("battery_learned_max_discharge_kw"),
+                "learned_max_charge_kw": data.get("battery_learned_max_charge_kw"),
+                "manual_max_discharge_kw": data.get("battery_peak_manual_discharge_kw"),
+                "manual_max_charge_kw": data.get("battery_peak_manual_charge_kw"),
+                "sample_ticks": data.get("battery_peak_sample_ticks"),
+                "learn_state": data.get("battery_peak_learn_state"),
+            }
         self.async_write_ha_state()
 
 

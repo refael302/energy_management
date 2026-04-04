@@ -23,6 +23,8 @@ _LEGACY_MINIMUM_BATTERY_RESERVE = "minimum_battery_reserve"
 _LEGACY_SAFETY_FORECAST_FACTOR = "safety_forecast_factor"
 _LEGACY_CONSUMER_DELAY = "consumer_delay"
 _LEGACY_EOD_BATTERY_TARGET = "eod_battery_target"
+_LEGACY_MAX_BATTERY_CURRENT_AMPS = "max_battery_current_amps"
+_LEGACY_BATTERY_CURRENT_SENSOR = "battery_current_sensor"
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT]
 
@@ -74,9 +76,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Config upgrades through v5 (strip keys now fixed in code)."""
+    """Config upgrades through v7 (battery power peaks; strip legacy current/amps)."""
     current = entry.version
-    if current >= 5:
+    if current >= 7:
         return True
 
     data = {**entry.data}
@@ -106,6 +108,53 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data.pop(_LEGACY_EOD_BATTERY_TARGET, None)
         options.pop(_LEGACY_EOD_BATTERY_TARGET, None)
         current = 6
+
+    if current < 7:
+        from .const import (
+            CONF_BATTERY_POWER_SENSOR,
+            DEFAULT_BATTERY_NOMINAL_VOLTAGE,
+            DEFAULT_MAX_BATTERY_CURRENT_AMPS,
+            MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
+        )
+        from .engine.battery_power_peak_cache import (
+            battery_power_peak_fingerprint,
+            create_battery_peak_store,
+        )
+
+        merged = {**data, **options}
+        amps_raw = merged.get(_LEGACY_MAX_BATTERY_CURRENT_AMPS)
+        try:
+            amps = (
+                float(amps_raw)
+                if amps_raw is not None
+                else float(DEFAULT_MAX_BATTERY_CURRENT_AMPS)
+            )
+        except (TypeError, ValueError):
+            amps = float(DEFAULT_MAX_BATTERY_CURRENT_AMPS)
+        seed_kw = max(
+            MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
+            amps * float(DEFAULT_BATTERY_NOMINAL_VOLTAGE) / 1000.0,
+        )
+        data.pop(_LEGACY_MAX_BATTERY_CURRENT_AMPS, None)
+        options.pop(_LEGACY_MAX_BATTERY_CURRENT_AMPS, None)
+        data.pop(_LEGACY_BATTERY_CURRENT_SENSOR, None)
+        options.pop(_LEGACY_BATTERY_CURRENT_SENSOR, None)
+        cfg_for_fp = {**data, **options}
+        fp = battery_power_peak_fingerprint(cfg_for_fp)
+        store = create_battery_peak_store(hass, entry.entry_id)
+        await store.async_save(
+            {
+                "fingerprint": fp,
+                "peak_discharge_kw": round(seed_kw, 4),
+                "peak_charge_kw": round(seed_kw, 4),
+                "sample_ticks": 0,
+            }
+        )
+        if not cfg_for_fp.get(CONF_BATTERY_POWER_SENSOR):
+            _LOGGER.warning(
+                "Energy Manager migration v7: no battery power sensor; peak store may mismatch until configured"
+            )
+        current = 7
 
     hass.config_entries.async_update_entry(
         entry,

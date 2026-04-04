@@ -19,6 +19,7 @@ from .engine.baseline_profile_learn import (
     unlearned_consumer_on,
 )
 from .engine.consumer_learn import ConsumerLearner, async_wait_house_power_after_turn_on
+from .engine.battery_power_limit_learn import BatteryPowerPeakLearner
 from .engine.consumer_learn_cache import consumer_learn_fingerprint
 from .engine.forecast_cache import (
     create_forecast_store,
@@ -34,7 +35,6 @@ from .const import (
     SYSTEM_MODE_NORMAL,
     SYSTEM_MODE_WASTING,
     CONF_BATTERY_CAPACITY,
-    CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONSUMER_SWITCHES,
@@ -52,7 +52,8 @@ from .const import (
     CONF_MANUAL_STRATEGY_OVERRIDE,
     CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_LONGITUDE,
-    CONF_MAX_BATTERY_CURRENT_AMPS,
+    CONF_MAX_BATTERY_CHARGE_POWER_KW,
+    CONF_MAX_BATTERY_DISCHARGE_POWER_KW,
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_STRINGS,
     DEFAULT_BATTERY_CAPACITY,
@@ -62,12 +63,12 @@ from .const import (
     DEFAULT_INVERTER_SIZE_KW,
     DEFAULT_LATITUDE,
     DEFAULT_LONGITUDE,
-    DEFAULT_MAX_BATTERY_CURRENT_AMPS,
     DEFAULT_SAFETY_FORECAST_FACTOR,
     DOMAIN,
     EOD_BATTERY_TARGET_PLANNING_PERCENT,
     EMERGENCY_RESERVE_PLANNING_PERCENT,
     FORECAST_STRATEGY_CACHE_MINUTES,
+    MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     UPDATE_INTERVAL,
 )
@@ -93,6 +94,13 @@ def _float_state(hass: HomeAssistant, entity_id: str) -> float:
         return float(state.state)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _effective_battery_max_kw(manual_kw: float, learned_kw: float) -> float:
+    """Manual max (kW) wins when > 0; else use learned peak (floored)."""
+    if manual_kw > 0:
+        return max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(manual_kw))
+    return max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(learned_kw))
 
 
 def _normalize_consumer_entity_ids(raw: Any) -> list[str]:
@@ -168,7 +176,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             eod_battery_target_percent=float(EOD_BATTERY_TARGET_PLANNING_PERCENT),
             emergency_reserve_percent=float(EMERGENCY_RESERVE_PLANNING_PERCENT),
             safety_forecast_factor_percent=float(DEFAULT_SAFETY_FORECAST_FACTOR),
-            max_battery_current_amps=float(data.get(CONF_MAX_BATTERY_CURRENT_AMPS, DEFAULT_MAX_BATTERY_CURRENT_AMPS)),
             discharge_limit_percent=float(data.get(CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT)),
             discharge_limit_deadband_percent=float(
                 data.get(CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT)
@@ -196,6 +203,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ]
         self.consumer_learner = ConsumerLearner(hass, entry.entry_id)
         self.baseline_profile_learner = BaselineProfileLearner(hass, entry.entry_id)
+        self.battery_peak_learner = BatteryPowerPeakLearner(hass, entry.entry_id)
         self.load_manager = LoadManager(
             hass,
             consumer_switches,
@@ -208,7 +216,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "battery_power": data.get(CONF_BATTERY_POWER_SENSOR),
             "solar": data.get(CONF_SOLAR_PRODUCTION_SENSOR),
             "house": data.get(CONF_HOUSE_CONSUMPTION_SENSOR),
-            "battery_current": data.get(CONF_BATTERY_CURRENT_SENSOR),
         }
         self._prev_discharge_state: str = ""
         self._last_decision: Any = None
@@ -265,18 +272,30 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             battery_power_w = _float_state(self.hass, self._entity_ids["battery_power"] or "")
             solar_w = _float_state(self.hass, self._entity_ids["solar"] or "")
             house_w = _float_state(self.hass, self._entity_ids["house"] or "")
-            battery_current = None
-            if self._entity_ids.get("battery_current"):
-                battery_current = _float_state(
-                    self.hass, self._entity_ids["battery_current"]
-                )
 
             self.model.battery_soc = soc
             self.model.battery_power_kw = battery_power_w / 1000.0
             self.model.solar_production_kw = solar_w / 1000.0
             self.model.house_consumption_kw = house_w / 1000.0
-            self.model.battery_current = battery_current if battery_current != 0.0 else None
             current_config = {**self.entry.data, **(self.entry.options or {})}
+
+            await self.battery_peak_learner.async_ensure_loaded(current_config)
+            self.battery_peak_learner.record_sample(self.model.battery_power_kw)
+            await self.battery_peak_learner.async_persist_if_dirty()
+            manual_d = float(current_config.get(CONF_MAX_BATTERY_DISCHARGE_POWER_KW) or 0)
+            manual_c = float(current_config.get(CONF_MAX_BATTERY_CHARGE_POWER_KW) or 0)
+            learned_d = self.battery_peak_learner.peak_discharge_kw
+            learned_c = self.battery_peak_learner.peak_charge_kw
+            self.model.max_battery_discharge_kw = _effective_battery_max_kw(manual_d, learned_d)
+            self.model.max_battery_charge_kw = _effective_battery_max_kw(manual_c, learned_c)
+            self.model.discharge_limit_percent = float(
+                current_config.get(CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT)
+            )
+            self.model.discharge_limit_deadband_percent = float(
+                current_config.get(
+                    CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT
+                )
+            )
 
             fp_learn = consumer_learn_fingerprint(current_config)
             await self.consumer_learner.async_ensure_loaded(fp_learn)
@@ -690,6 +709,22 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "baseline_estimated_daily_kwh": self.baseline_profile_learner.estimated_daily_kwh(),
                 "baseline_completed_days": self.baseline_profile_learner.completed_days_count(),
                 "baseline_sample_recorded": baseline_sampled,
+                "battery_learned_max_discharge_kw": round(learned_d, 3),
+                "battery_learned_max_charge_kw": round(learned_c, 3),
+                "battery_effective_max_discharge_kw": round(
+                    self.model.max_battery_discharge_kw, 3
+                ),
+                "battery_effective_max_charge_kw": round(
+                    self.model.max_battery_charge_kw, 3
+                ),
+                "battery_peak_manual_discharge_kw": manual_d if manual_d > 0 else None,
+                "battery_peak_manual_charge_kw": manual_c if manual_c > 0 else None,
+                "battery_peak_sample_ticks": self.battery_peak_learner.sample_ticks,
+                "battery_peak_learn_state": (
+                    "manual"
+                    if (manual_d > 0 or manual_c > 0)
+                    else "auto"
+                ),
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)

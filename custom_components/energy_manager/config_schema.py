@@ -16,7 +16,6 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_AZIMUTH,
     CONF_BATTERY_CAPACITY,
-    CONF_BATTERY_CURRENT_SENSOR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONSUMER_SWITCHES,
@@ -29,7 +28,8 @@ from .const import (
     CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_LATITUDE,
     CONF_LONGITUDE,
-    CONF_MAX_BATTERY_CURRENT_AMPS,
+    CONF_MAX_BATTERY_CHARGE_POWER_KW,
+    CONF_MAX_BATTERY_DISCHARGE_POWER_KW,
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
@@ -40,7 +40,6 @@ from .const import (
     DEFAULT_INVERTER_SIZE_KW,
     DEFAULT_LATITUDE,
     DEFAULT_LONGITUDE,
-    DEFAULT_MAX_BATTERY_CURRENT_AMPS,
     DEFAULT_SYSTEM_SIZE_KW,
     DEFAULT_TILT,
     DEFAULT_AZIMUTH,
@@ -147,12 +146,6 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
                 default=base.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR),
             ): vol.Coerce(float),
             vol.Required(
-                CONF_MAX_BATTERY_CURRENT_AMPS,
-                default=base.get(
-                    CONF_MAX_BATTERY_CURRENT_AMPS, DEFAULT_MAX_BATTERY_CURRENT_AMPS
-                ),
-            ): vol.Coerce(int),
-            vol.Required(
                 CONF_DISCHARGE_LIMIT_PERCENT,
                 default=base.get(
                     CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT
@@ -170,9 +163,15 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
                 default=base.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW),
             ): vol.Coerce(float),
             vol.Optional(
-                CONF_BATTERY_CURRENT_SENSOR,
-                default=base.get(CONF_BATTERY_CURRENT_SENSOR) or "",
-            ): sensor_selector(),
+                CONF_MAX_BATTERY_DISCHARGE_POWER_KW,
+                default=float(
+                    base.get(CONF_MAX_BATTERY_DISCHARGE_POWER_KW) or 0
+                ),
+            ): vol.Coerce(float),
+            vol.Optional(
+                CONF_MAX_BATTERY_CHARGE_POWER_KW,
+                default=float(base.get(CONF_MAX_BATTERY_CHARGE_POWER_KW) or 0),
+            ): vol.Coerce(float),
             vol.Optional(
                 CONF_LIGHTS_TO_TURN_OFF,
                 default=list_or_empty(base.get(CONF_LIGHTS_TO_TURN_OFF)),

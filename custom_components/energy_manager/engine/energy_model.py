@@ -15,6 +15,7 @@ from ..const import (
     DEFAULT_SAFETY_FORECAST_FACTOR,
     EOD_BATTERY_TARGET_PLANNING_PERCENT,
     EMERGENCY_RESERVE_PLANNING_PERCENT,
+    MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW,
 )
@@ -28,7 +29,6 @@ class EnergyModel:
     # Raw from sensors (or coordinator)
     battery_soc: float = 0.0
     battery_power_kw: float = 0.0
-    battery_current: float | None = None
     solar_production_kw: float = 0.0
     house_consumption_kw: float = 0.0
 
@@ -37,7 +37,9 @@ class EnergyModel:
     eod_battery_target_percent: float = EOD_BATTERY_TARGET_PLANNING_PERCENT
     emergency_reserve_percent: float = EMERGENCY_RESERVE_PLANNING_PERCENT
     safety_forecast_factor_percent: float = float(DEFAULT_SAFETY_FORECAST_FACTOR)
-    max_battery_current_amps: float = 36.0
+    # Effective max |power| (kW) for discharge / charge; set by coordinator from learn + optional manual
+    max_battery_discharge_kw: float = MIN_EFFECTIVE_MAX_BATTERY_POWER_KW
+    max_battery_charge_kw: float = MIN_EFFECTIVE_MAX_BATTERY_POWER_KW
     discharge_limit_percent: float = 80.0
     discharge_limit_deadband_percent: float = 5.0
 
@@ -93,33 +95,33 @@ class EnergyModel:
             self.battery_status = "full"
 
     def _charge_discharge_states(self) -> None:
-        c = self.battery_current
-        m = self.max_battery_current_amps
+        """Use battery power (kW) and effective max charge/discharge power (kW)."""
+        m_dis = max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(self.max_battery_discharge_kw))
+        m_ch = max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(self.max_battery_charge_kw))
         pct = self.discharge_limit_percent
         db = self.discharge_limit_deadband_percent
-        thr_discharge = m * pct / 100
-        thr_under = m * (pct - db) / 100
+        thr_discharge_kw = m_dis * pct / 100.0
+        thr_under_kw = m_dis * max(0.0, pct - db) / 100.0
 
-        if c is None:
-            self.charge_state = "off"
-            self.discharge_state = "off"
-            self.discharge_under_limit = False
-            return
-        if c <= -m:
+        p = self.battery_power_kw
+        discharge_kw = max(0.0, p)
+        charge_kw = max(0.0, -p)
+
+        if charge_kw >= m_ch:
             self.charge_state = "max"
-        elif c < 0:
+        elif charge_kw > 0.01:
             self.charge_state = "on"
         else:
             self.charge_state = "off"
 
-        if c <= 0:
+        if discharge_kw <= 0.01:
             self.discharge_state = "off"
-        elif c >= thr_discharge:
+        elif discharge_kw >= thr_discharge_kw:
             self.discharge_state = "max"
         else:
             self.discharge_state = "on"
 
-        self.discharge_under_limit = 0 < c < thr_under
+        self.discharge_under_limit = 0.01 < discharge_kw < thr_under_kw
 
     def _consumption_and_headroom(self, now_local: datetime | None) -> None:
         # Baseline integral until local calendar midnight (distinct from hours_until_eod / sunset).

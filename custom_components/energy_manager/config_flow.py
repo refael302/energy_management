@@ -17,7 +17,6 @@ from .config_schema import (
 )
 from .const import (
     CONF_AZIMUTH,
-    CONF_BATTERY_CURRENT_SENSOR,
     CONF_LATITUDE,
     CONF_LIGHTS_TO_TURN_OFF,
     CONF_LONGITUDE,
@@ -34,11 +33,8 @@ from .const import (
 
 def _apply_advanced_optional_entities(user_input: dict[str, Any]) -> None:
     """Normalize optional entity fields from an advanced-step form submission."""
-    battery_current = user_input.pop(CONF_BATTERY_CURRENT_SENSOR, None)
     lights = user_input.pop(CONF_LIGHTS_TO_TURN_OFF, None) or []
     recommended = user_input.pop(CONF_RECOMMENDED_TO_TURN_OFF, None) or []
-    if battery_current:
-        user_input[CONF_BATTERY_CURRENT_SENSOR] = battery_current
     user_input[CONF_LIGHTS_TO_TURN_OFF] = lights
     user_input[CONF_RECOMMENDED_TO_TURN_OFF] = recommended
 
@@ -66,7 +62,7 @@ def _latitude_longitude_preserve_or_home(
 class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Energy Manager."""
 
-    VERSION = 6
+    VERSION = 7
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize."""

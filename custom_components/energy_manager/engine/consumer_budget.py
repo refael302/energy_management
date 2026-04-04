@@ -22,8 +22,8 @@ from ..const import (
     CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW,
     CONSUMER_BUDGET_MARGIN_MEDIUM_CAP_KW,
     CONSUMER_BUDGET_MARGIN_NEG_CAP_KW,
-    DEFAULT_BATTERY_NOMINAL_VOLTAGE,
     DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
+    MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     MARGIN_HIGH_THRESHOLD,
     MARGIN_MEDIUM_MAX,
 )
@@ -96,33 +96,24 @@ def _battery_discharge_headroom_kw(
     discharge_reserve_ratio: float,
 ) -> float:
     """
-    kW margin before hitting configured discharge current limit, scaled by (1 - reserve).
-    When not discharging or no current sensor, returns a large cap (not binding).
+    kW margin before hitting configured discharge power limit (effective max × pct),
+    scaled by (1 - reserve). When not discharging, returns a large cap (not binding).
     """
     reserve = max(0.0, min(0.95, discharge_reserve_ratio))
     factor = 1.0 - reserve
 
-    c = model.battery_current
     discharge_kw = max(0.0, model.battery_power_kw)
-
-    if c is None or c <= 0:
-        if discharge_kw <= 0.01:
-            return CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW
-        c = max(0.0, discharge_kw * 1000.0 / DEFAULT_BATTERY_NOMINAL_VOLTAGE)
-
-    m = float(model.max_battery_current_amps)
-    pct = float(model.discharge_limit_percent)
-    thr_a = m * pct / 100.0
-    if thr_a <= 0:
+    if discharge_kw <= 0.01:
         return CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW
 
-    v_eff = DEFAULT_BATTERY_NOMINAL_VOLTAGE
-    if c and c > 0.05 and discharge_kw > 0.05:
-        v_eff = min(600.0, max(36.0, discharge_kw * 1000.0 / c))
+    m_kw = max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(model.max_battery_discharge_kw))
+    pct = float(model.discharge_limit_percent)
+    thr_kw = m_kw * pct / 100.0
+    if thr_kw <= 0:
+        return CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW
 
-    allowed_a = thr_a * factor
-    headroom_a = max(0.0, allowed_a - c)
-    return headroom_a * v_eff / 1000.0
+    allowed_kw = thr_kw * factor
+    return max(0.0, allowed_kw - discharge_kw)
 
 
 def marginal_battery_load_fraction(

@@ -17,8 +17,10 @@ DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO = 0.15
 # Reserve fraction of battery discharge headroom (0.3 = leave 30% for user / transients)
 # (fixed in code; not exposed in config UI)
 DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO = 0.30
-# Assumed DC V for kW estimate when only battery current is available (48V nominal system)
+# Legacy: used only for migration seed (old max amps → kW). Runtime logic uses power (kW) only.
 DEFAULT_BATTERY_NOMINAL_VOLTAGE = 51.0
+# Minimum effective max charge/discharge power (kW) to avoid degenerate thresholds
+MIN_EFFECTIVE_MAX_BATTERY_POWER_KW = 0.5
 # Daily margin (kWh) tiers for strategic waste cap — max consumer budget kW per band
 CONSUMER_BUDGET_MARGIN_NEG_CAP_KW = 0.0
 CONSUMER_BUDGET_MARGIN_HIGH_CAP_KW = 3.0  # daily_margin <= MARGIN_HIGH_THRESHOLD
@@ -102,10 +104,10 @@ CONF_STRINGS = "strings"
 CONF_SYSTEM_SIZE_KW = "system_size_kw"
 CONF_TILT = "tilt"
 CONF_AZIMUTH = "azimuth"
-CONF_MAX_BATTERY_CURRENT_AMPS = "max_battery_current_amps"
+CONF_MAX_BATTERY_DISCHARGE_POWER_KW = "max_battery_discharge_power_kw"
+CONF_MAX_BATTERY_CHARGE_POWER_KW = "max_battery_charge_power_kw"
 CONF_DISCHARGE_LIMIT_PERCENT = "discharge_limit_percent"
 CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT = "discharge_limit_deadband_percent"
-CONF_BATTERY_CURRENT_SENSOR = "battery_current_sensor"
 CONF_MANUAL_OVERRIDE = "manual_override"  # legacy: when True, both overrides on
 CONF_MANUAL_MODE_OVERRIDE = "manual_mode_override"
 CONF_MANUAL_STRATEGY_OVERRIDE = "manual_strategy_override"
@@ -126,6 +128,7 @@ BASELINE_PROFILE_BOOTSTRAP_KW = 0.5
 BASELINE_PROFILE_WINDOW_DAYS = 7
 # PV forecast safety margin (percent of Open-Meteo kWh); fixed — not user-configurable
 DEFAULT_SAFETY_FORECAST_FACTOR = 90
+# Legacy default max battery current (A) — only for migration seed; not in UI
 DEFAULT_MAX_BATTERY_CURRENT_AMPS = 36
 DEFAULT_DISCHARGE_LIMIT_PERCENT = 80
 DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT = 5
