@@ -1,8 +1,9 @@
 """
 Append-only TXT operation log per config entry (schema + anti-spam + safe I/O).
 
-Lines are grep-friendly: TIME LEVEL CATEGORY event summary [key=value ...]
-See module docstring in const / plan for event codes used by callers.
+Schema 2 (human-readable):
+  Line 1: TIME | LEVEL | CATEGORY | event | summary
+  Line 2 (optional):   | key=value | key=value ...  (context; keys in stable priority order)
 """
 
 from __future__ import annotations
@@ -11,6 +12,26 @@ import logging
 import os
 import time
 from typing import Any
+
+# Context keys emitted in this order first (then remaining keys, sorted); improves readability vs raw sort.
+_CONTEXT_KEY_PRIORITY: tuple[str, ...] = (
+    "reason_code",
+    "entity_id",
+    "from_mode",
+    "to_mode",
+    "from_strategy",
+    "to_strategy",
+    "from_available",
+    "to_available",
+    "mode_reason",
+    "strategy_reason",
+    "error",
+    "learned_kw",
+    "samples_used",
+    "count",
+    "suppressed_count",
+    "parent_event",
+)
 
 from homeassistant.core import HomeAssistant
 
@@ -50,18 +71,24 @@ def _clamp(text: str, max_len: int) -> str:
     return t[: max_len - 1] + "…"
 
 
-def _context_kv(context: dict[str, Any] | None) -> str:
-    if not context:
-        return ""
-    parts: list[str] = []
-    for key in sorted(context.keys()):
+def _ordered_context_pairs(context: dict[str, Any]) -> list[tuple[str, str]]:
+    """Key=value pairs: priority keys first, then any other keys alphabetically."""
+    seen: set[str] = set()
+    out: list[tuple[str, str]] = []
+    for key in _CONTEXT_KEY_PRIORITY:
+        if key not in context:
+            continue
         val = context[key]
         if val is None:
             continue
-        s = _clamp(str(val), 120)
-        parts.append(f"{key}={s}")
-    out = " ".join(parts)
-    return _clamp(out, INTEGRATION_LOG_CONTEXT_MAX_LEN)
+        seen.add(key)
+        out.append((key, _clamp(str(val).replace("|", "/"), 120)))
+    for key in sorted(k for k in context if k not in seen):
+        val = context[key]
+        if val is None:
+            continue
+        out.append((key, _clamp(str(val).replace("|", "/"), 120)))
+    return out
 
 
 def _dedupe_key(category: str, event: str, context: dict[str, Any] | None) -> str:
@@ -71,20 +98,29 @@ def _dedupe_key(category: str, event: str, context: dict[str, Any] | None) -> st
     return f"{category}|{event}|{entity}|{reason}"
 
 
-def _format_line(
+def _format_event_lines(
     ts_iso: str,
     level: str,
     category: str,
     event: str,
     summary: str,
     context: dict[str, Any] | None,
-) -> str:
-    summary_c = _clamp(summary, INTEGRATION_LOG_SUMMARY_MAX_LEN)
-    ctx_s = _context_kv(context)
-    parts = [ts_iso, level, category, event, summary_c]
-    if ctx_s:
-        parts.append(ctx_s)
-    return " ".join(parts)
+) -> list[str]:
+    """Schema 2: main line with | separators; optional second line for context."""
+    summary_c = _clamp(
+        summary.replace("\n", " ").replace("|", "/"), INTEGRATION_LOG_SUMMARY_MAX_LEN
+    )
+    event_c = event.replace("|", "/").replace("\n", " ").strip()
+    main = (
+        f"{ts_iso} | {level} | {category} | {event_c} | {summary_c}"
+    )
+    lines = [main]
+    pairs = _ordered_context_pairs(context) if context else []
+    if pairs:
+        body = " | ".join(f"{k}={v}" for k, v in pairs)
+        body = _clamp(body, INTEGRATION_LOG_CONTEXT_MAX_LEN)
+        lines.append(f"  | {body}")
+    return lines
 
 
 def _append_lines_sync(path: str, entry_id: str, lines: list[str]) -> None:
@@ -121,7 +157,8 @@ async def async_log_event(
     context: dict[str, Any] | None = None,
 ) -> None:
     """
-    Append one logical line to the per-entry ops log. Never raises to callers.
+    Append one logical event to the per-entry ops log (main line; optional context line).
+    Never raises to callers.
 
     level: INFO | WARN | ERROR
     category: MODE | ACTION | FORECAST | LEARN | SYSTEM
@@ -150,8 +187,8 @@ async def async_log_event(
                 from homeassistant.util import dt as dt_util
 
                 ts_sup = dt_util.now().isoformat()
-                extra_lines.append(
-                    _format_line(
+                extra_lines.extend(
+                    _format_event_lines(
                         ts_sup,
                         "INFO",
                         category,
@@ -168,8 +205,9 @@ async def async_log_event(
         from homeassistant.util import dt as dt_util
 
         ts_iso = dt_util.now().isoformat()
-        main = _format_line(ts_iso, level, category, event, summary, ctx)
-        all_lines = extra_lines + [main]
+        all_lines = extra_lines + _format_event_lines(
+            ts_iso, level, category, event, summary, ctx
+        )
         path = _ops_log_path(hass, entry_id)
         await hass.async_add_executor_job(_append_lines_sync, path, entry_id, all_lines)
         _last_write_mono[ek] = now_mono

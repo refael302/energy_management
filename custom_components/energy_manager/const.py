@@ -5,7 +5,7 @@ NAME = "Energy Manager"
 
 # Operation log (TXT under config_dir/energy_manager_logs/) — not exposed in UI yet
 INTEGRATION_LOG_ENABLED = True
-INTEGRATION_LOG_SCHEMA_VERSION = 1
+INTEGRATION_LOG_SCHEMA_VERSION = 2
 INTEGRATION_LOG_MAX_BYTES = 2_000_000
 INTEGRATION_LOG_DEDUPE_WINDOW_SEC = 300.0
 # Categories that may spam (Open-Meteo, repeated system notices); ACTION never deduped inside logger
