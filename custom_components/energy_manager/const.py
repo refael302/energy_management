@@ -3,6 +3,16 @@
 DOMAIN = "energy_manager"
 NAME = "Energy Manager"
 
+# Operation log (TXT under config_dir/energy_manager_logs/) — not exposed in UI yet
+INTEGRATION_LOG_ENABLED = True
+INTEGRATION_LOG_SCHEMA_VERSION = 1
+INTEGRATION_LOG_MAX_BYTES = 2_000_000
+INTEGRATION_LOG_DEDUPE_WINDOW_SEC = 300.0
+# Categories that may spam (Open-Meteo, repeated system notices); ACTION never deduped inside logger
+INTEGRATION_LOG_DEDUPE_CATEGORIES = frozenset({"FORECAST", "SYSTEM"})
+INTEGRATION_LOG_SUMMARY_MAX_LEN = 200
+INTEGRATION_LOG_CONTEXT_MAX_LEN = 480
+
 # Service: clear learned per-consumer power (optional manual reset)
 SERVICE_RESET_CONSUMER_LEARN = "reset_consumer_learn"
 

@@ -21,6 +21,7 @@ from ..const import (
     SYSTEM_MODE_SAVING,
     SYSTEM_MODE_WASTING,
 )
+from ..integration_log import async_log_event
 from .consumer_budget import next_unlearned_for_sampling
 
 _LOGGER = logging.getLogger(__name__)
@@ -79,8 +80,11 @@ class LoadManager:
         lights_entity_ids: list[str],
         delay_minutes: int,
         schedule_consumer_learn: Callable[[str, float], None] | None = None,
+        *,
+        integration_entry_id: str | None = None,
     ) -> None:
         self.hass = hass
+        self._integration_entry_id = integration_entry_id or ""
         self.consumer_entity_ids = consumer_entity_ids or []
         self.lights_entity_ids = lights_entity_ids or []
         self.delay_minutes = delay_minutes
@@ -90,6 +94,25 @@ class LoadManager:
         self._last_turn_on_time: datetime | None = None
         self._last_turn_on_delay_sec: int = CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES * 60
         self._last_turn_off_delay_sec: int = CONSUMER_ACTION_DELAY_LEARNED_MINUTES * 60
+
+    async def _log_action(
+        self,
+        level: str,
+        event: str,
+        summary: str,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        if not self._integration_entry_id:
+            return
+        await async_log_event(
+            self.hass,
+            self._integration_entry_id,
+            level,
+            "ACTION",
+            event,
+            summary,
+            context,
+        )
 
     def _consumer_entity_ids(self, entity_ids: list[str]) -> list[str]:
         """Return only switch/input_boolean entities (consumers we can turn on/off)."""
@@ -218,6 +241,12 @@ class LoadManager:
         await self._call_turn_off([entity_id])
         self._last_turn_off_time = datetime.now(timezone.utc)
         _LOGGER.debug("Turned off (normal, LIFO): %s", entity_id)
+        await self._log_action(
+            "INFO",
+            "consumer_turned_off",
+            f"Turned off {entity_id} (normal LIFO)",
+            {"entity_id": entity_id, "reason_code": "normal_lifo"},
+        )
 
     def _super_saving_entity_ids(self, entity_ids: list[str]) -> list[str]:
         """Return only entities in domains we can turn off in super-saving."""
@@ -251,10 +280,28 @@ class LoadManager:
         if consumers:
             await self._call_turn_off(consumers)
             _LOGGER.debug("Turned off all consumers: %s", consumers)
+            await self._log_action(
+                "INFO",
+                "consumers_turned_off_bulk",
+                f"Turned off {len(consumers)} consumer(s) (saving mode)",
+                {
+                    "reason_code": "saving",
+                    "count": str(len(consumers)),
+                },
+            )
         if super_saving and self.lights_entity_ids:
             await self._turn_off_super_saving_entities(self.lights_entity_ids)
             _LOGGER.debug(
                 "Turned off super-saving devices: %s", self.lights_entity_ids
+            )
+            await self._log_action(
+                "INFO",
+                "super_saving_devices_off",
+                f"Turned off {len(self.lights_entity_ids)} super-saving device(s)",
+                {
+                    "reason_code": "super_saving",
+                    "count": str(len(self.lights_entity_ids)),
+                },
             )
         self.state.consumers_turned_on_by_wasting.clear()
 
@@ -287,6 +334,12 @@ class LoadManager:
             self._last_turn_off_time = datetime.now(timezone.utc)
             self._last_turn_off_delay_sec = self._delay_seconds_for_entity(eid, learned_kw)
             _LOGGER.debug("Wasting budget: turned off %s (not in target)", eid)
+            await self._log_action(
+                "INFO",
+                "consumer_turned_off",
+                f"Wasting: turned off {eid} (not in budget target)",
+                {"entity_id": eid, "reason_code": "wasting_not_in_target"},
+            )
             return
 
         for eid in ordered:
@@ -306,6 +359,12 @@ class LoadManager:
             self._last_turn_on_time = datetime.now(timezone.utc)
             self._last_turn_on_delay_sec = self._delay_seconds_for_entity(eid, learned_kw)
             _LOGGER.debug("Wasting budget: turned on %s (target)", eid)
+            await self._log_action(
+                "INFO",
+                "consumer_turned_on",
+                f"Wasting: turned on {eid} (in budget target)",
+                {"entity_id": eid, "reason_code": "wasting_target"},
+            )
             if (
                 self._schedule_consumer_learn
                 and house_consumption_entity_id
@@ -333,6 +392,12 @@ class LoadManager:
                     candidate, learned_kw
                 )
                 _LOGGER.debug("Wasting budget: turned on %s (learn path)", candidate)
+                await self._log_action(
+                    "INFO",
+                    "consumer_turned_on",
+                    f"Wasting: turned on {candidate} (unlearned sampling)",
+                    {"entity_id": candidate, "reason_code": "wasting_learn_path"},
+                )
                 if (
                     self._schedule_consumer_learn
                     and house_consumption_entity_id
@@ -371,6 +436,12 @@ class LoadManager:
                 )
                 self._append_managed(entity_id)
                 _LOGGER.debug("Turned on consumer (fallback): %s", entity_id)
+                await self._log_action(
+                    "INFO",
+                    "consumer_turned_on",
+                    f"Wasting fallback: turned on {entity_id}",
+                    {"entity_id": entity_id, "reason_code": "wasting_fallback"},
+                )
                 if (
                     self._schedule_consumer_learn
                     and house_consumption_entity_id
@@ -412,4 +483,10 @@ class LoadManager:
             _LOGGER.debug(
                 "Discharge over limit: turned off one consumer %s",
                 entity_id,
+            )
+            await self._log_action(
+                "WARN",
+                "consumer_turned_off",
+                f"Discharge at limit: turned off {entity_id}",
+                {"entity_id": entity_id, "reason_code": "discharge_over_limit"},
             )

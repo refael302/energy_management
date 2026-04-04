@@ -77,6 +77,7 @@ from .engine.consumer_budget import (
 )
 from .engine.load_manager import WastingContext
 from .engine.decision_engine import recommend_battery_strategy
+from .integration_log import async_log_event
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -201,6 +202,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lights,
             CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
             schedule_consumer_learn=self._schedule_consumer_learn,
+            integration_entry_id=entry.entry_id,
         )
         self._entity_ids = {
             "battery_soc": data.get(CONF_BATTERY_SOC_SENSOR),
@@ -219,6 +221,8 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._forecast_store = create_forecast_store(hass, entry.entry_id)
         self._forecast_disk_cache: dict[str, Any] | None = None
         self._locked_consumer_budget_kw: float | None = None
+        self._ops_prev_system_mode: str | None = None
+        self._ops_prev_strategy: str | None = None
 
     def _schedule_consumer_learn(self, entity_id: str, baseline_w: float) -> None:
         """After integration turns a consumer on, sample house meter delta (async)."""
@@ -321,7 +325,10 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ):
                 now_ha = dt_util.now()
                 forecast = await self.forecast_engine.fetch_and_compute(
-                    self.hass, now_ha, inverter_size_kw=inverter_size_kw
+                    self.hass,
+                    now_ha,
+                    inverter_size_kw=inverter_size_kw,
+                    integration_entry_id=self.entry.entry_id,
                 )
                 if forecast.available:
                     self._last_forecast = forecast
@@ -363,6 +370,15 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         _LOGGER.warning(
                             "Open-Meteo unavailable; using persisted hourly forecast cache"
                         )
+                        await async_log_event(
+                            self.hass,
+                            self.entry.entry_id,
+                            "WARN",
+                            "FORECAST",
+                            "forecast_using_disk_cache",
+                            "Open-Meteo unavailable; using persisted hourly cache",
+                            {"reason_code": "disk_cache"},
+                        )
                     elif self._last_forecast is not None and getattr(
                         self._last_forecast, "available", False
                     ):
@@ -370,6 +386,15 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self._last_forecast_time = now_utc
                         _LOGGER.warning(
                             "Open-Meteo unavailable; using last in-memory forecast"
+                        )
+                        await async_log_event(
+                            self.hass,
+                            self.entry.entry_id,
+                            "WARN",
+                            "FORECAST",
+                            "forecast_using_memory_cache",
+                            "Open-Meteo unavailable; using in-memory forecast",
+                            {"reason_code": "memory_cache"},
                         )
                     else:
                         self._last_forecast = forecast
@@ -381,6 +406,20 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._prev_forecast_available is not None
                 and self._prev_forecast_available != forecast_available
             )
+            if forecast_availability_changed:
+                await async_log_event(
+                    self.hass,
+                    self.entry.entry_id,
+                    "INFO",
+                    "FORECAST",
+                    "forecast_availability_changed",
+                    f"Forecast available {self._prev_forecast_available} -> {forecast_available}",
+                    {
+                        "reason_code": "availability_toggle",
+                        "from_available": str(self._prev_forecast_available),
+                        "to_available": str(forecast_available),
+                    },
+                )
             self._prev_forecast_available = forecast_available
             self.model.forecast_available = forecast_available
             if forecast_available:
@@ -447,6 +486,42 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._last_decision = decision
 
+            if self._ops_prev_system_mode is not None:
+                if self._ops_prev_system_mode != decision.system_mode:
+                    await async_log_event(
+                        self.hass,
+                        self.entry.entry_id,
+                        "INFO",
+                        "MODE",
+                        "system_mode_changed",
+                        f"System mode {self._ops_prev_system_mode} -> {decision.system_mode}",
+                        {
+                            "reason_code": "decision_engine",
+                            "from_mode": self._ops_prev_system_mode,
+                            "to_mode": decision.system_mode,
+                            "mode_reason": decision.mode_reason,
+                        },
+                    )
+            self._ops_prev_system_mode = decision.system_mode
+
+            if self._ops_prev_strategy is not None:
+                if self._ops_prev_strategy != decision.strategy_recommendation:
+                    await async_log_event(
+                        self.hass,
+                        self.entry.entry_id,
+                        "INFO",
+                        "MODE",
+                        "strategy_recommendation_changed",
+                        f"Strategy {self._ops_prev_strategy} -> {decision.strategy_recommendation}",
+                        {
+                            "reason_code": "strategy_update",
+                            "from_strategy": self._ops_prev_strategy,
+                            "to_strategy": decision.strategy_recommendation,
+                            "strategy_reason": decision.strategy_reason,
+                        },
+                    )
+            self._ops_prev_strategy = decision.strategy_recommendation
+
             # 5. Consumer budget (wasting) + load manager
             super_saving = self.model.battery_status == "very low"
             wasting_context: WastingContext | None = None
@@ -508,6 +583,15 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.model.discharge_state == "max"
                 and self._prev_discharge_state != "max"
             ):
+                await async_log_event(
+                    self.hass,
+                    self.entry.entry_id,
+                    "WARN",
+                    "SYSTEM",
+                    "discharge_over_limit_handling",
+                    "Discharge at max; turning off one consumer",
+                    {"reason_code": "discharge_max"},
+                )
                 consumer_list = _normalize_consumer_entity_ids(
                     current_config.get(CONF_CONSUMER_SWITCHES)
                 )
@@ -716,5 +800,17 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
         except Exception as e:
             _LOGGER.exception("Error updating energy manager: %s", e)
+            try:
+                await async_log_event(
+                    self.hass,
+                    self.entry.entry_id,
+                    "ERROR",
+                    "SYSTEM",
+                    "coordinator_update_failed",
+                    "Coordinator update raised an exception",
+                    {"reason_code": "exception", "error": str(e)},
+                )
+            except Exception:  # noqa: BLE001
+                pass
             raise UpdateFailed(str(e)) from e
 

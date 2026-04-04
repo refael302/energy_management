@@ -26,6 +26,7 @@ from ..const import (
     OPEN_METEO_FORECAST_DAYS,
     OPEN_METEO_HOURLY,
 )
+from ..integration_log import async_log_event
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -297,6 +298,8 @@ class ForecastEngine:
         hass: Any,
         now: datetime | None = None,
         inverter_size_kw: float = 0.0,
+        *,
+        integration_entry_id: str | None = None,
     ) -> SolarForecast:
         """
         Fetch hourly GHI, DNI, DHI from Open-Meteo; compute POA and power in executor.
@@ -316,6 +319,16 @@ class ForecastEngine:
                 "Invalid Home Assistant time_zone %r; using UTC for Open-Meteo",
                 tz_name,
             )
+            if integration_entry_id:
+                await async_log_event(
+                    hass,
+                    integration_entry_id,
+                    "WARN",
+                    "FORECAST",
+                    "forecast_invalid_timezone",
+                    "Invalid HA time_zone; using UTC for Open-Meteo",
+                    {"reason_code": "invalid_timezone", "time_zone": str(tz_name)},
+                )
             tz_name = "UTC"
             local_zone = ZoneInfo("UTC")
         tz_param = quote(tz_name, safe="")
@@ -332,13 +345,46 @@ class ForecastEngine:
                         _LOGGER.warning(
                             "Open-Meteo returned %s for %s", resp.status, url
                         )
+                        if integration_entry_id:
+                            await async_log_event(
+                                hass,
+                                integration_entry_id,
+                                "WARN",
+                                "FORECAST",
+                                "open_meteo_http_error",
+                                f"Open-Meteo HTTP {resp.status}",
+                                {
+                                    "reason_code": "http_error",
+                                    "http_status": str(resp.status),
+                                },
+                            )
                         return SolarForecast(available=False)
                     data = await resp.json()
         except asyncio.TimeoutError:
             _LOGGER.warning("Open-Meteo request timeout")
+            if integration_entry_id:
+                await async_log_event(
+                    hass,
+                    integration_entry_id,
+                    "WARN",
+                    "FORECAST",
+                    "open_meteo_timeout",
+                    "Open-Meteo request timeout",
+                    {"reason_code": "timeout"},
+                )
             return SolarForecast(available=False)
         except Exception as e:
             _LOGGER.warning("Open-Meteo request failed: %s", e)
+            if integration_entry_id:
+                await async_log_event(
+                    hass,
+                    integration_entry_id,
+                    "WARN",
+                    "FORECAST",
+                    "open_meteo_request_failed",
+                    "Open-Meteo request failed",
+                    {"reason_code": "request_failed", "error": str(e)},
+                )
             return SolarForecast(available=False)
 
         hourly = data.get("hourly", {})
@@ -356,6 +402,16 @@ class ForecastEngine:
         )
 
         if not times_str or not ghi:
+            if integration_entry_id:
+                await async_log_event(
+                    hass,
+                    integration_entry_id,
+                    "WARN",
+                    "FORECAST",
+                    "open_meteo_empty_response",
+                    "Open-Meteo returned empty hourly data",
+                    {"reason_code": "empty_hourly"},
+                )
             return SolarForecast(available=False)
 
         def _parse_time(ts: str) -> datetime:
@@ -423,6 +479,19 @@ class ForecastEngine:
                 hour_index,
                 now.isoformat(),
             )
+            if integration_entry_id:
+                await async_log_event(
+                    hass,
+                    integration_entry_id,
+                    "WARN",
+                    "FORECAST",
+                    "forecast_all_zeros",
+                    "Forecast hourly power sums to zero",
+                    {
+                        "reason_code": "all_zeros",
+                        "hour_index": str(hour_index),
+                    },
+                )
         _LOGGER.debug(
             "Forecast next_hour_kwh=%s, today_remaining=%s, tomorrow=%s",
             result.forecast_next_hour_kwh,

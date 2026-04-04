@@ -23,6 +23,7 @@ from ..const import (
     CONSUMER_LEARN_SPREAD_MAX,
     CONSUMER_LEARN_TIMEOUT_SEC,
 )
+from ..integration_log import async_log_event
 from .consumer_learn_cache import create_consumer_learn_store
 
 _LOGGER = logging.getLogger(__name__)
@@ -133,6 +134,7 @@ class ConsumerLearner:
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         self.hass = hass
+        self._entry_id = entry_id
         self._store: Store = create_consumer_learn_store(hass, entry_id)
         self._runtime = ConsumerLearnRuntime()
         self._lock = asyncio.Lock()
@@ -208,6 +210,19 @@ class ConsumerLearner:
                     consumer_entity_id,
                     kw,
                     n_used,
+                )
+                await async_log_event(
+                    self.hass,
+                    self._entry_id,
+                    "INFO",
+                    "LEARN",
+                    "consumer_learn_finalized",
+                    f"Learned power for {consumer_entity_id}",
+                    {
+                        "entity_id": consumer_entity_id,
+                        "learned_kw": str(kw),
+                        "samples_used": str(n_used),
+                    },
                 )
                 await self._store.async_save(
                     {
