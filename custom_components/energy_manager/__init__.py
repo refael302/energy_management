@@ -25,6 +25,8 @@ _LEGACY_CONSUMER_DELAY = "consumer_delay"
 _LEGACY_EOD_BATTERY_TARGET = "eod_battery_target"
 _LEGACY_MAX_BATTERY_CURRENT_AMPS = "max_battery_current_amps"
 _LEGACY_BATTERY_CURRENT_SENSOR = "battery_current_sensor"
+_LEGACY_DISCHARGE_LIMIT_PERCENT = "discharge_limit_percent"
+_LEGACY_DISCHARGE_LIMIT_DEADBAND_PERCENT = "discharge_limit_deadband_percent"
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT]
 
@@ -155,6 +157,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "Energy Manager migration v7: no battery power sensor; peak store may mismatch until configured"
             )
         current = 7
+
+    if current < 8:
+        data.pop(_LEGACY_DISCHARGE_LIMIT_PERCENT, None)
+        options.pop(_LEGACY_DISCHARGE_LIMIT_PERCENT, None)
+        data.pop(_LEGACY_DISCHARGE_LIMIT_DEADBAND_PERCENT, None)
+        options.pop(_LEGACY_DISCHARGE_LIMIT_DEADBAND_PERCENT, None)
+        current = 8
 
     hass.config_entries.async_update_entry(
         entry,

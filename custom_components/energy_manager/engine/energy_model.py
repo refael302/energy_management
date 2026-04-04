@@ -13,6 +13,8 @@ from ..const import (
     BASELINE_PROFILE_BOOTSTRAP_KW,
     BATTERY_SOC_VERY_LOW_PERCENT,
     DEFAULT_SAFETY_FORECAST_FACTOR,
+    DISCHARGE_DEADBAND_FRACTION_OF_MAX,
+    DISCHARGE_HEADROOM_FRACTION,
     EOD_BATTERY_TARGET_PLANNING_PERCENT,
     EMERGENCY_RESERVE_PLANNING_PERCENT,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
@@ -40,8 +42,6 @@ class EnergyModel:
     # Effective max |power| (kW) for discharge / charge; set by coordinator from learn + optional manual
     max_battery_discharge_kw: float = MIN_EFFECTIVE_MAX_BATTERY_POWER_KW
     max_battery_charge_kw: float = MIN_EFFECTIVE_MAX_BATTERY_POWER_KW
-    discharge_limit_percent: float = 80.0
-    discharge_limit_deadband_percent: float = 5.0
 
     # Forecast inputs (from forecast engine)
     forecast_next_hour_kwh: float = 0.0
@@ -98,10 +98,11 @@ class EnergyModel:
         """Use battery power (kW) and effective max charge/discharge power (kW)."""
         m_dis = max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(self.max_battery_discharge_kw))
         m_ch = max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(self.max_battery_charge_kw))
-        pct = self.discharge_limit_percent
-        db = self.discharge_limit_deadband_percent
-        thr_discharge_kw = m_dis * pct / 100.0
-        thr_under_kw = m_dis * max(0.0, pct - db) / 100.0
+        thr_discharge_kw = m_dis * (1.0 - DISCHARGE_HEADROOM_FRACTION)
+        thr_under_kw = max(
+            0.0,
+            thr_discharge_kw - DISCHARGE_DEADBAND_FRACTION_OF_MAX * m_dis,
+        )
 
         p = self.battery_power_kw
         discharge_kw = max(0.0, p)

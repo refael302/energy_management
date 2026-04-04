@@ -19,8 +19,6 @@ from .const import (
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONSUMER_SWITCHES,
-    CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-    CONF_DISCHARGE_LIMIT_PERCENT,
     CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
@@ -34,8 +32,6 @@ from .const import (
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
     DEFAULT_BATTERY_CAPACITY,
-    DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-    DEFAULT_DISCHARGE_LIMIT_PERCENT,
     DEFAULT_FORECAST_PR,
     DEFAULT_INVERTER_SIZE_KW,
     DEFAULT_LATITUDE,
@@ -145,19 +141,6 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
                 CONF_FORECAST_PR,
                 default=base.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR),
             ): vol.Coerce(float),
-            vol.Required(
-                CONF_DISCHARGE_LIMIT_PERCENT,
-                default=base.get(
-                    CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT
-                ),
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-                default=base.get(
-                    CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-                    DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-                ),
-            ): vol.Coerce(int),
             vol.Optional(
                 CONF_INVERTER_SIZE_KW,
                 default=base.get(CONF_INVERTER_SIZE_KW, DEFAULT_INVERTER_SIZE_KW),

@@ -62,7 +62,7 @@ def _latitude_longitude_preserve_or_home(
 class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Energy Manager."""
 
-    VERSION = 7
+    VERSION = 8
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize."""

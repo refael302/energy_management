@@ -1,6 +1,6 @@
 """
 Consumer load budget (kW): combine instantaneous sensors, daily margin, night bridge,
-and battery discharge headroom with safety reserve. Pure functions + hysteresis + greedy selection.
+and battery discharge headroom (fixed fraction of max discharge kW). Pure functions + hysteresis + greedy selection.
 
 Instant surplus (v1):
   charge_kw = max(0, -battery_power_kw)  # negative battery power = charging (HA convention)
@@ -22,7 +22,7 @@ from ..const import (
     CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW,
     CONSUMER_BUDGET_MARGIN_MEDIUM_CAP_KW,
     CONSUMER_BUDGET_MARGIN_NEG_CAP_KW,
-    DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
+    DISCHARGE_HEADROOM_FRACTION,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     MARGIN_HIGH_THRESHOLD,
     MARGIN_MEDIUM_MAX,
@@ -91,29 +91,21 @@ def night_spread_cap_kw(model: EnergyModel) -> float:
     return max(0.0, usable / hours)
 
 
-def _battery_discharge_headroom_kw(
-    model: EnergyModel,
-    discharge_reserve_ratio: float,
-) -> float:
+def _battery_discharge_headroom_kw(model: EnergyModel) -> float:
     """
-    kW margin before hitting configured discharge power limit (effective max × pct),
-    scaled by (1 - reserve). When not discharging, returns a large cap (not binding).
+    kW margin before hitting operational discharge ceiling (max kW × (1 - headroom)).
+    When not discharging, returns a large cap (not binding).
     """
-    reserve = max(0.0, min(0.95, discharge_reserve_ratio))
-    factor = 1.0 - reserve
-
     discharge_kw = max(0.0, model.battery_power_kw)
     if discharge_kw <= 0.01:
         return CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW
 
     m_kw = max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(model.max_battery_discharge_kw))
-    pct = float(model.discharge_limit_percent)
-    thr_kw = m_kw * pct / 100.0
-    if thr_kw <= 0:
+    operational_ceiling_kw = m_kw * (1.0 - DISCHARGE_HEADROOM_FRACTION)
+    if operational_ceiling_kw <= 0:
         return CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW
 
-    allowed_kw = thr_kw * factor
-    return max(0.0, allowed_kw - discharge_kw)
+    return max(0.0, operational_ceiling_kw - discharge_kw)
 
 
 def marginal_battery_load_fraction(
@@ -132,12 +124,8 @@ def marginal_battery_load_fraction(
 def compute_raw_budget_kw(
     model: EnergyModel,
     inverter_size_kw: float,
-    discharge_reserve_ratio: float | None = None,
 ) -> ConsumerBudgetCeilings:
     """Compose ceiling components; caller takes min(...) for raw budget."""
-    res = discharge_reserve_ratio
-    if res is None:
-        res = DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO
     instant = compute_instant_surplus_kw(
         model.solar_production_kw,
         model.house_consumption_kw,
@@ -146,7 +134,7 @@ def compute_raw_budget_kw(
     )
     strategic = strategic_waste_cap_kw(model)
     night_sp = night_spread_cap_kw(model)
-    discharge = _battery_discharge_headroom_kw(model, res)
+    discharge = _battery_discharge_headroom_kw(model)
     return ConsumerBudgetCeilings(
         instant_kw=round(instant, 3),
         strategic_kw=round(strategic, 3),

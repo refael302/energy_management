@@ -31,15 +31,12 @@ from .const import (
     CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
     STRATEGY_MEDIUM,
     DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
-    DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO,
     SYSTEM_MODE_NORMAL,
     SYSTEM_MODE_WASTING,
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONSUMER_SWITCHES,
-    CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-    CONF_DISCHARGE_LIMIT_PERCENT,
     CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
@@ -57,8 +54,6 @@ from .const import (
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_STRINGS,
     DEFAULT_BATTERY_CAPACITY,
-    DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT,
-    DEFAULT_DISCHARGE_LIMIT_PERCENT,
     DEFAULT_FORECAST_PR,
     DEFAULT_INVERTER_SIZE_KW,
     DEFAULT_LATITUDE,
@@ -176,10 +171,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             eod_battery_target_percent=float(EOD_BATTERY_TARGET_PLANNING_PERCENT),
             emergency_reserve_percent=float(EMERGENCY_RESERVE_PLANNING_PERCENT),
             safety_forecast_factor_percent=float(DEFAULT_SAFETY_FORECAST_FACTOR),
-            discharge_limit_percent=float(data.get(CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT)),
-            discharge_limit_deadband_percent=float(
-                data.get(CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT)
-            ),
         )
         self.forecast_engine = ForecastEngine(
             latitude=float(data.get(CONF_LATITUDE, DEFAULT_LATITUDE)),
@@ -288,14 +279,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             learned_c = self.battery_peak_learner.peak_charge_kw
             self.model.max_battery_discharge_kw = _effective_battery_max_kw(manual_d, learned_d)
             self.model.max_battery_charge_kw = _effective_battery_max_kw(manual_c, learned_c)
-            self.model.discharge_limit_percent = float(
-                current_config.get(CONF_DISCHARGE_LIMIT_PERCENT, DEFAULT_DISCHARGE_LIMIT_PERCENT)
-            )
-            self.model.discharge_limit_deadband_percent = float(
-                current_config.get(
-                    CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT, DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT
-                )
-            )
 
             fp_learn = consumer_learn_fingerprint(current_config)
             await self.consumer_learner.async_ensure_loaded(fp_learn)
@@ -480,11 +463,8 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.model.house_consumption_kw,
                 )
                 discharge_kw = max(0.0, self.model.battery_power_kw)
-                reserve = float(DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO)
                 hyst_ratio = float(DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO)
-                budget_ceilings = compute_raw_budget_kw(
-                    self.model, inverter_size_kw, reserve
-                )
+                budget_ceilings = compute_raw_budget_kw(self.model, inverter_size_kw)
                 raw_budget_kw = compose_raw_budget_kw(
                     budget_ceilings,
                     marginal_battery_per_kw=marginal,

@@ -14,9 +14,11 @@ CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES = 5
 # Hysteresis: only adopt new raw budget if relative change >= this ratio vs last locked budget
 # (fixed in code; not exposed in config UI)
 DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO = 0.15
-# Reserve fraction of battery discharge headroom (0.3 = leave 30% for user / transients)
-# (fixed in code; not exposed in config UI)
-DEFAULT_CONSUMER_DISCHARGE_RESERVE_RATIO = 0.30
+# Discharge: keep this fraction of max discharge power (kW) as headroom — single source for
+# consumer budget ceiling and discharge_state thresholds (not user-configurable).
+DISCHARGE_HEADROOM_FRACTION = 0.30
+# Hysteresis for discharge_under_limit: band below operational ceiling, as fraction of full max kW
+DISCHARGE_DEADBAND_FRACTION_OF_MAX = 0.05
 # Legacy: used only for migration seed (old max amps → kW). Runtime logic uses power (kW) only.
 DEFAULT_BATTERY_NOMINAL_VOLTAGE = 51.0
 # Minimum effective max charge/discharge power (kW) to avoid degenerate thresholds
@@ -106,8 +108,6 @@ CONF_TILT = "tilt"
 CONF_AZIMUTH = "azimuth"
 CONF_MAX_BATTERY_DISCHARGE_POWER_KW = "max_battery_discharge_power_kw"
 CONF_MAX_BATTERY_CHARGE_POWER_KW = "max_battery_charge_power_kw"
-CONF_DISCHARGE_LIMIT_PERCENT = "discharge_limit_percent"
-CONF_DISCHARGE_LIMIT_DEADBAND_PERCENT = "discharge_limit_deadband_percent"
 CONF_MANUAL_OVERRIDE = "manual_override"  # legacy: when True, both overrides on
 CONF_MANUAL_MODE_OVERRIDE = "manual_mode_override"
 CONF_MANUAL_STRATEGY_OVERRIDE = "manual_strategy_override"
@@ -130,8 +130,6 @@ BASELINE_PROFILE_WINDOW_DAYS = 7
 DEFAULT_SAFETY_FORECAST_FACTOR = 90
 # Legacy default max battery current (A) — only for migration seed; not in UI
 DEFAULT_MAX_BATTERY_CURRENT_AMPS = 36
-DEFAULT_DISCHARGE_LIMIT_PERCENT = 80
-DEFAULT_DISCHARGE_LIMIT_DEADBAND_PERCENT = 5
 DEFAULT_INVERTER_SIZE_KW = 0  # 0 = no cap
 DEFAULT_FORECAST_PR = 0.75
 # String (PV) defaults – used in config flow when no strings configured yet

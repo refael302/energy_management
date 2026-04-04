@@ -28,8 +28,6 @@
           "forecast_pr": "Forecast performance ratio",
           "max_battery_discharge_power_kw": "Max discharge power (manual, kW)",
           "max_battery_charge_power_kw": "Max charge power (manual, kW)",
-          "discharge_limit_percent": "Discharge limit",
-          "discharge_limit_deadband_percent": "Discharge limit deadband",
           "inverter_size_kw": "Inverter AC limit (kW, 0 = off)",
           "lights_to_turn_off": "Devices to turn off in super-saving (optional)",
           "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
@@ -38,8 +36,6 @@
           "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
           "max_battery_discharge_power_kw": "Optional. Cap for max discharge power in kW (0 = use learned peak from battery power).",
           "max_battery_charge_power_kw": "Optional. Cap for max charge power in kW (0 = use learned peak from battery power).",
-          "discharge_limit_percent": "Discharge limit as percent of max discharge power (0–100). Example: 80",
-          "discharge_limit_deadband_percent": "Deadband in percent below discharge limit before allowing turn-on again. Example: 5",
           "inverter_size_kw": "Optional AC output limit in kW for clipping checks. Use 0 to disable.",
           "lights_to_turn_off": "Optional. Devices (lights, switches, fans, etc.) to turn off automatically in super energy saving mode (e.g. when battery very low).",
           "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off)."
@@ -95,8 +91,6 @@
             "forecast_pr": "Forecast performance ratio",
             "max_battery_discharge_power_kw": "Max discharge power (manual, kW)",
             "max_battery_charge_power_kw": "Max charge power (manual, kW)",
-            "discharge_limit_percent": "Discharge limit",
-            "discharge_limit_deadband_percent": "Discharge limit deadband",
             "inverter_size_kw": "Inverter AC limit (kW, 0 = off)",
             "lights_to_turn_off": "Devices to turn off in super-saving (optional)",
             "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
@@ -105,8 +99,6 @@
             "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
             "max_battery_discharge_power_kw": "Optional. Cap for max discharge power in kW (0 = use learned peak from battery power).",
             "max_battery_charge_power_kw": "Optional. Cap for max charge power in kW (0 = use learned peak from battery power).",
-            "discharge_limit_percent": "Discharge limit as percent of max discharge power (0–100). Example: 80",
-            "discharge_limit_deadband_percent": "Deadband in percent below discharge limit before allowing turn-on again. Example: 5",
             "inverter_size_kw": "Optional AC output limit in kW for clipping checks. Use 0 to disable.",
             "lights_to_turn_off": "Optional. Devices (lights, switches, fans, etc.) to turn off automatically in super energy saving mode (e.g. when battery very low).",
             "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off)."
