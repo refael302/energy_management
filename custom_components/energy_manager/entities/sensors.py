@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.const import UnitOfEnergy, UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -610,23 +610,35 @@ class EnergyManagerConsumersOnSensor(EnergyManagerSensorBase):
 
 
 class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
-    """Battery runtime until 10% SOC at current consumption (HH:MM)."""
+    """Battery runtime until min SOC at current discharge (hours); hhmm in attributes."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
             coordinator,
             entry,
-            "battery_runtime_hhmm",
+            "battery_runtime_hours",
             "Battery Runtime",
             icon="mdi:battery-clock",
+            device_class=SensorDeviceClass.DURATION,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfTime.HOURS,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
+        self._attr_unique_id = f"{entry.entry_id}_battery_runtime_hhmm"
 
     @callback
     def _handle_coordinator_update(self) -> None:
         data = self.coordinator.data
         if data is not None:
-            self._attr_native_value = data.get("battery_runtime_hhmm", "99:59")
+            hrs = data.get("battery_runtime_hours")
+            self._attr_extra_state_attributes = {
+                "hhmm": data.get("battery_runtime_hhmm", "99:59"),
+            }
+            if hrs is None:
+                self._attr_available = False
+            else:
+                self._attr_available = True
+                self._attr_native_value = round(float(hrs), 4)
         self.async_write_ha_state()
 
 
@@ -692,21 +704,33 @@ class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
 
 
 class EnergyManagerBatteryTimeToFullSensor(EnergyManagerSensorBase):
-    """Battery time to full at current charge rate (HH:MM)."""
+    """Battery time to full at current charge rate (hours); hhmm in attributes."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
             coordinator,
             entry,
-            "battery_time_to_full_hhmm",
+            "battery_time_to_full_hours",
             "Battery Time To Full",
             icon="mdi:battery-clock-outline",
+            device_class=SensorDeviceClass.DURATION,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfTime.HOURS,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
+        self._attr_unique_id = f"{entry.entry_id}_battery_time_to_full_hhmm"
 
     @callback
     def _handle_coordinator_update(self) -> None:
         data = self.coordinator.data
         if data is not None:
-            self._attr_native_value = data.get("battery_time_to_full_hhmm", "99:59")
+            hrs = data.get("battery_time_to_full_hours")
+            self._attr_extra_state_attributes = {
+                "hhmm": data.get("battery_time_to_full_hhmm", "99:59"),
+            }
+            if hrs is None:
+                self._attr_available = False
+            else:
+                self._attr_available = True
+                self._attr_native_value = round(float(hrs), 4)
         self.async_write_ha_state()

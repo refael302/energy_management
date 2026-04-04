@@ -582,15 +582,19 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 * self.model.battery_capacity_kwh,
             )
             discharge_kw = max(self.model.battery_power_kw or 0.0, 0.0)
+            battery_runtime_hours: float | None
             if discharge_kw <= 0:
+                battery_runtime_hours = None
                 battery_runtime_hhmm = "99:59"
             else:
                 runtime_hours = usable_kwh / discharge_kw
+                battery_runtime_hours = float(runtime_hours)
                 h = min(99, int(runtime_hours))
                 m = int((runtime_hours % 1) * 60)
                 battery_runtime_hhmm = f"{h:02d}:{m:02d}"
 
-            # Time until battery is full at current charge rate (HH:MM)
+            # Time until battery is full at current charge rate
+            battery_time_to_full_hours: float | None = None
             battery_time_to_full_hhmm = "99:59"
             if soc is not None and soc < 100:
                 remaining_kwh = max(
@@ -600,6 +604,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 charge_kw = max(-(self.model.battery_power_kw or 0.0), 0.0)
                 if charge_kw > 0:
                     charge_hours = remaining_kwh / charge_kw
+                    battery_time_to_full_hours = float(charge_hours)
                     h_full = min(99, int(charge_hours))
                     m_full = int((charge_hours % 1) * 60)
                     battery_time_to_full_hhmm = f"{h_full:02d}:{m_full:02d}"
@@ -649,7 +654,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "night_bridge_tomorrow_ok": self.model.night_bridge_tomorrow_ok,
                 "night_bridge_energy_need_kwh": self.model.night_bridge_energy_need_kwh,
                 "night_bridge_usable_kwh": self.model.night_bridge_usable_kwh,
+                "battery_runtime_hours": battery_runtime_hours,
                 "battery_runtime_hhmm": battery_runtime_hhmm,
+                "battery_time_to_full_hours": battery_time_to_full_hours,
                 "battery_time_to_full_hhmm": battery_time_to_full_hhmm,
                 "consumers_on_count": consumers_on_count,
                 "consumers_total": consumers_total,
