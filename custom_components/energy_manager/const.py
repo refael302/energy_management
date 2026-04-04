@@ -19,6 +19,21 @@ DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO = 0.15
 DISCHARGE_HEADROOM_FRACTION = 0.30
 # Hysteresis for discharge_under_limit: band below operational ceiling, as fraction of full max kW
 DISCHARGE_DEADBAND_FRACTION_OF_MAX = 0.05
+
+# Unified battery power direction + level (ENUM sensor); derived from charge_state + discharge_state
+BATTERY_POWER_STATE_OFF = "off"
+BATTERY_POWER_STATE_CHARGE = "charge"
+BATTERY_POWER_STATE_MAX_CHARGE = "max_charge"
+BATTERY_POWER_STATE_DISCHARGE = "discharge"
+BATTERY_POWER_STATE_MAX_DISCHARGE = "max_discharge"
+BATTERY_POWER_STATE_OPTIONS: tuple[str, ...] = (
+    BATTERY_POWER_STATE_OFF,
+    BATTERY_POWER_STATE_CHARGE,
+    BATTERY_POWER_STATE_MAX_CHARGE,
+    BATTERY_POWER_STATE_DISCHARGE,
+    BATTERY_POWER_STATE_MAX_DISCHARGE,
+)
+
 # Legacy: used only for migration seed (old max amps → kW). Runtime logic uses power (kW) only.
 DEFAULT_BATTERY_NOMINAL_VOLTAGE = 51.0
 # Minimum effective max charge/discharge power (kW) to avoid degenerate thresholds

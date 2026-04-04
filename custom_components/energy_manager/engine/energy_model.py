@@ -11,6 +11,11 @@ from typing import Any
 
 from ..const import (
     BASELINE_PROFILE_BOOTSTRAP_KW,
+    BATTERY_POWER_STATE_CHARGE,
+    BATTERY_POWER_STATE_DISCHARGE,
+    BATTERY_POWER_STATE_MAX_CHARGE,
+    BATTERY_POWER_STATE_MAX_DISCHARGE,
+    BATTERY_POWER_STATE_OFF,
     BATTERY_SOC_VERY_LOW_PERCENT,
     DEFAULT_SAFETY_FORECAST_FACTOR,
     DISCHARGE_DEADBAND_FRACTION_OF_MAX,
@@ -123,6 +128,21 @@ class EnergyModel:
             self.discharge_state = "on"
 
         self.discharge_under_limit = 0.01 < discharge_kw < thr_under_kw
+
+        if self.discharge_state != "off":
+            self.battery_power_state = (
+                BATTERY_POWER_STATE_MAX_DISCHARGE
+                if self.discharge_state == "max"
+                else BATTERY_POWER_STATE_DISCHARGE
+            )
+        elif self.charge_state != "off":
+            self.battery_power_state = (
+                BATTERY_POWER_STATE_MAX_CHARGE
+                if self.charge_state == "max"
+                else BATTERY_POWER_STATE_CHARGE
+            )
+        else:
+            self.battery_power_state = BATTERY_POWER_STATE_OFF
 
     def _consumption_and_headroom(self, now_local: datetime | None) -> None:
         # Baseline integral until local calendar midnight (distinct from hours_until_eod / sunset).

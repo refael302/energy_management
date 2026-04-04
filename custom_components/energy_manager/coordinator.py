@@ -643,6 +643,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "battery_reserve_state": self.model.battery_status,
                 "daily_margin_kwh": daily_margin,
                 "recommended_to_turn_off_entity_ids": recommended_entity_ids,
+                "battery_power_state": self.model.battery_power_state,
                 "charge_state": self.model.charge_state,
                 "discharge_state": self.model.discharge_state,
                 "needed_energy_today_kwh": self.model.needed_energy_today_kwh,

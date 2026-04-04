@@ -19,7 +19,14 @@ from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ..const import BASELINE_PROFILE_BOOTSTRAP_KW, BASELINE_PROFILE_WINDOW_DAYS, DOMAIN, NAME
+from ..const import (
+    BASELINE_PROFILE_BOOTSTRAP_KW,
+    BASELINE_PROFILE_WINDOW_DAYS,
+    BATTERY_POWER_STATE_OFF,
+    BATTERY_POWER_STATE_OPTIONS,
+    DOMAIN,
+    NAME,
+)
 from ..coordinator import EnergyManagerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,8 +61,7 @@ async def async_setup_entry(
             EnergyManagerNightBridgeRelaxedSensor(coordinator, entry),
             EnergyManagerStrategyRecommendationSensor(coordinator, entry),
             EnergyManagerStrategyReasonSensor(coordinator, entry),
-            EnergyManagerChargeStateSensor(coordinator, entry),
-            EnergyManagerDischargeStateSensor(coordinator, entry),
+            EnergyManagerBatteryPowerStateSensor(coordinator, entry),
             EnergyManagerBatteryPowerLimitsSensor(coordinator, entry),
             EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
             EnergyManagerConsumersOnSensor(coordinator, entry),
@@ -483,45 +489,32 @@ class EnergyManagerStrategyReasonSensor(EnergyManagerSensorBase):
         self.async_write_ha_state()
 
 
-class EnergyManagerChargeStateSensor(EnergyManagerSensorBase):
-    """Battery charge state: off / on / max."""
+class EnergyManagerBatteryPowerStateSensor(EnergyManagerSensorBase):
+    """Unified battery direction/level: off, charge, max_charge, discharge, max_discharge."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
             coordinator,
             entry,
-            "charge_state",
-            "Charge State",
-            icon="mdi:battery-arrow-up",
+            "battery_power_state",
+            "Battery power state",
+            icon="mdi:battery-sync",
+            device_class=SensorDeviceClass.ENUM,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
+        self._attr_options = list(BATTERY_POWER_STATE_OPTIONS)
 
     @callback
     def _handle_coordinator_update(self) -> None:
         data = self.coordinator.data
         if data:
-            self._attr_native_value = data.get("charge_state", "unknown")
-        self.async_write_ha_state()
-
-
-class EnergyManagerDischargeStateSensor(EnergyManagerSensorBase):
-    """Battery discharge state: off / on / max."""
-
-    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(
-            coordinator,
-            entry,
-            "discharge_state",
-            "Discharge State",
-            icon="mdi:battery-arrow-down",
-            entity_category=EntityCategory.DIAGNOSTIC,
-        )
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        data = self.coordinator.data
-        if data:
-            self._attr_native_value = data.get("discharge_state", "unknown")
+            self._attr_native_value = data.get(
+                "battery_power_state", BATTERY_POWER_STATE_OFF
+            )
+            self._attr_extra_state_attributes = {
+                "charge_state": data.get("charge_state"),
+                "discharge_state": data.get("discharge_state"),
+            }
         self.async_write_ha_state()
 
 
