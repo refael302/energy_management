@@ -1,0 +1,11 @@
+# Service schemas for Developer Tools → Services UI
+reset_consumer_learn:
+  name: Reset consumer learn
+  description: Clears learned per-consumer power data for Energy Manager.
+  fields:
+    config_entry_id:
+      name: Config entry ID
+      description: Optional. Target one Energy Manager entry; omit to reset all.
+      required: false
+      selector:
+        text:

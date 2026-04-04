@@ -78,9 +78,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Config upgrades through v7 (battery power peaks; strip legacy current/amps)."""
+    """Config upgrades through v8 (strip legacy discharge limit keys; v7 = battery kW peaks)."""
     current = entry.version
-    if current >= 7:
+    if current >= 8:
         return True
 
     data = {**entry.data}

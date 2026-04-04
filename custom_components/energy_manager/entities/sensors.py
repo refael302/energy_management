@@ -530,7 +530,7 @@ class EnergyManagerBatteryPowerLimitsSensor(EnergyManagerSensorBase):
             icon="mdi:battery-charging-high",
             device_class=SensorDeviceClass.POWER,
             state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfPower.KILOWATTS,
+            unit=UnitOfPower.KILO_WATT,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
 
