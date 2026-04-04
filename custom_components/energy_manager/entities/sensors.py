@@ -211,7 +211,7 @@ class EnergyManagerBatteryPowerSensor(EnergyManagerSensorBase):
 
 
 class EnergyManagerForecastRemainingSensor(EnergyManagerSensorBase):
-    """Forecast remaining today (kWh)."""
+    """Forecast remaining today (kWh); hourly PV breakdown for today in attributes."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
@@ -223,6 +223,29 @@ class EnergyManagerForecastRemainingSensor(EnergyManagerSensorBase):
             device_class=SensorDeviceClass.ENERGY,
             unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data is not None:
+            if self._key in data:
+                self._attr_native_value = data[self._key]
+            self._attr_extra_state_attributes = {
+                "hourly_forecast_today": data.get("forecast_today_remaining_hourly_kw")
+                or [],
+                "hourly_forecast_today_full": data.get("forecast_today_full_hourly_kw")
+                or [],
+                "forecast_today_hourly_times_iso": data.get(
+                    "forecast_today_hourly_times_iso"
+                )
+                or [],
+                "forecast_today_remaining_hourly_times_iso": data.get(
+                    "forecast_today_remaining_hourly_times_iso"
+                )
+                or [],
+                "current_hour_index": data.get("forecast_current_hour_index", -1),
+            }
+        self.async_write_ha_state()
 
 
 class EnergyManagerForecastNextHourSensor(EnergyManagerSensorBase):
@@ -257,7 +280,7 @@ class EnergyManagerForecastCurrentPowerSensor(EnergyManagerSensorBase):
 
 
 class EnergyManagerForecastTomorrowSensor(EnergyManagerSensorBase):
-    """Forecast solar production for tomorrow (kWh). Exposes hourly_forecast attribute for charts."""
+    """Forecast solar production for tomorrow (kWh); hourly series for tomorrow in attributes."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
@@ -277,23 +300,10 @@ class EnergyManagerForecastTomorrowSensor(EnergyManagerSensorBase):
             self._attr_native_value = data.get("forecast_tomorrow_kwh")
             self._attr_extra_state_attributes = {
                 "hourly_forecast": data.get("forecast_tomorrow_hourly_kw") or [],
-                "hourly_forecast_today": data.get("forecast_today_remaining_hourly_kw")
-                or [],
-                "hourly_forecast_today_full": data.get("forecast_today_full_hourly_kw")
-                or [],
-                "forecast_today_hourly_times_iso": data.get(
-                    "forecast_today_hourly_times_iso"
-                )
-                or [],
-                "forecast_today_remaining_hourly_times_iso": data.get(
-                    "forecast_today_remaining_hourly_times_iso"
-                )
-                or [],
                 "forecast_tomorrow_hourly_times_iso": data.get(
                     "forecast_tomorrow_hourly_times_iso"
                 )
                 or [],
-                "current_hour_index": data.get("forecast_current_hour_index", -1),
             }
         self.async_write_ha_state()
 
