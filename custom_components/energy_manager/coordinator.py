@@ -27,7 +27,7 @@ from .engine.forecast_cache import (
     stored_series_covers_now,
 )
 from .const import (
-    BATTERY_RUNTIME_MIN_SOC_PERCENT,
+    BATTERY_SOC_VERY_LOW_PERCENT,
     CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
     STRATEGY_MEDIUM,
     DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
@@ -68,6 +68,7 @@ from .const import (
     UPDATE_INTERVAL,
 )
 from .engine import DecisionEngine, EnergyModel, ForecastEngine, LoadManager
+from .engine.battery_horizon import compute_battery_edge_horizons
 from .engine.consumer_budget import (
     apply_hysteresis,
     compose_raw_budget_kw,
@@ -97,6 +98,14 @@ def _effective_battery_max_kw(manual_kw: float, learned_kw: float) -> float:
     if manual_kw > 0:
         return max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(manual_kw))
     return max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(learned_kw))
+
+
+def _hours_float_to_hhmm(hours: float | None) -> str:
+    if hours is None:
+        return "99:59"
+    h = int(min(99, max(0, int(hours))))
+    m = int((float(hours) % 1.0) * 60)
+    return f"{h:02d}:{m:02d}"
 
 
 def _normalize_consumer_entity_ids(raw: Any) -> list[str]:
@@ -660,38 +669,90 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f_current_hour_index = -1
                 f_tomorrow_hourly_times_iso = []
 
+            # Battery horizon (forecast) vs instantaneous fallback
+            battery_horizon_method = "instantaneous"
+            battery_horizon_hourly: list[dict[str, Any]] = []
+            battery_horizon_to_full_edge_iso: str | None = None
+            battery_horizon_to_very_low_edge_iso: str | None = None
+
             usable_kwh = max(
                 0.0,
-                (soc - BATTERY_RUNTIME_MIN_SOC_PERCENT) / 100.0
+                (soc - BATTERY_SOC_VERY_LOW_PERCENT) / 100.0
                 * self.model.battery_capacity_kwh,
             )
             discharge_kw = max(self.model.battery_power_kw or 0.0, 0.0)
             battery_runtime_hours: float | None
+            battery_runtime_hhmm = "99:59"
             if discharge_kw <= 0:
                 battery_runtime_hours = None
-                battery_runtime_hhmm = "99:59"
             else:
                 runtime_hours = usable_kwh / discharge_kw
                 battery_runtime_hours = float(runtime_hours)
-                h = min(99, int(runtime_hours))
-                m = int((runtime_hours % 1) * 60)
-                battery_runtime_hhmm = f"{h:02d}:{m:02d}"
+                battery_runtime_hhmm = _hours_float_to_hhmm(battery_runtime_hours)
 
-            # Time until battery is full at current charge rate
             battery_time_to_full_hours: float | None = None
             battery_time_to_full_hhmm = "99:59"
-            if soc is not None and soc < 100:
+            if soc is not None and soc < EOD_BATTERY_TARGET_PLANNING_PERCENT:
                 remaining_kwh = max(
                     0.0,
-                    (100.0 - soc) / 100.0 * self.model.battery_capacity_kwh,
+                    (EOD_BATTERY_TARGET_PLANNING_PERCENT - soc)
+                    / 100.0
+                    * self.model.battery_capacity_kwh,
                 )
                 charge_kw = max(-(self.model.battery_power_kw or 0.0), 0.0)
                 if charge_kw > 0:
                     charge_hours = remaining_kwh / charge_kw
                     battery_time_to_full_hours = float(charge_hours)
-                    h_full = min(99, int(charge_hours))
-                    m_full = int((charge_hours % 1) * 60)
-                    battery_time_to_full_hhmm = f"{h_full:02d}:{m_full:02d}"
+                    battery_time_to_full_hhmm = _hours_float_to_hhmm(
+                        battery_time_to_full_hours
+                    )
+            elif soc is not None and soc >= EOD_BATTERY_TARGET_PLANNING_PERCENT:
+                battery_time_to_full_hours = 0.0
+                battery_time_to_full_hhmm = "00:00"
+
+            if forecast_available:
+                pv_slots = list(f_today_hourly) + list(f_tomorrow_hourly)
+                time_slots = list(f_today_remaining_times_iso) + list(
+                    f_tomorrow_hourly_times_iso
+                )
+                if (
+                    len(pv_slots) >= 1
+                    and len(time_slots) == len(pv_slots)
+                    and self.model.battery_capacity_kwh > 0
+                ):
+                    now_local = dt_util.now()
+                    to_full, to_vl = compute_battery_edge_horizons(
+                        now_local=now_local,
+                        soc_percent=float(soc),
+                        capacity_kwh=float(self.model.battery_capacity_kwh),
+                        max_charge_kw=float(self.model.max_battery_charge_kw),
+                        max_discharge_kw=float(self.model.max_battery_discharge_kw),
+                        pv_kw_slots=pv_slots,
+                        time_iso_slots=time_slots,
+                        baseline_hourly_kw=list(self.model.baseline_hourly_kw),
+                        target_full_percent=float(EOD_BATTERY_TARGET_PLANNING_PERCENT),
+                        target_very_low_percent=float(BATTERY_SOC_VERY_LOW_PERCENT),
+                    )
+                    battery_horizon_method = "forecast"
+                    battery_horizon_hourly = to_full.hourly_steps[:48]
+                    battery_horizon_to_full_edge_iso = to_full.edge_time_iso
+                    battery_horizon_to_very_low_edge_iso = to_vl.edge_time_iso
+                    if to_full.hours_until is not None:
+                        battery_time_to_full_hours = float(to_full.hours_until)
+                        battery_time_to_full_hhmm = _hours_float_to_hhmm(
+                            battery_time_to_full_hours
+                        )
+                    else:
+                        battery_time_to_full_hours = None
+                        battery_time_to_full_hhmm = "99:59"
+                    if to_vl.hours_until is not None:
+                        battery_runtime_hours = float(to_vl.hours_until)
+                        battery_runtime_hhmm = _hours_float_to_hhmm(
+                            battery_runtime_hours
+                        )
+                    else:
+                        battery_runtime_hours = None
+                        battery_runtime_hhmm = "99:59"
 
             _LOGGER.debug(
                 "update ok: mode=%s strategy=%s",
@@ -743,6 +804,10 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "battery_runtime_hhmm": battery_runtime_hhmm,
                 "battery_time_to_full_hours": battery_time_to_full_hours,
                 "battery_time_to_full_hhmm": battery_time_to_full_hhmm,
+                "battery_horizon_method": battery_horizon_method,
+                "battery_horizon_hourly": battery_horizon_hourly,
+                "battery_horizon_to_full_edge_iso": battery_horizon_to_full_edge_iso,
+                "battery_horizon_to_very_low_edge_iso": battery_horizon_to_very_low_edge_iso,
                 "consumers_on_count": consumers_on_count,
                 "consumers_total": consumers_total,
                 "consumer_learned_kw": self.consumer_learner.get_learned_kw(),

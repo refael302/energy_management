@@ -24,7 +24,9 @@ from ..const import (
     BASELINE_PROFILE_WINDOW_DAYS,
     BATTERY_POWER_STATE_OFF,
     BATTERY_POWER_STATE_OPTIONS,
+    BATTERY_SOC_VERY_LOW_PERCENT,
     DOMAIN,
+    EOD_BATTERY_TARGET_PLANNING_PERCENT,
     NAME,
 )
 from ..coordinator import EnergyManagerCoordinator
@@ -603,7 +605,7 @@ class EnergyManagerConsumersOnSensor(EnergyManagerSensorBase):
 
 
 class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
-    """Battery runtime until min SOC at current discharge (hours); hhmm in attributes."""
+    """Time until SOC reaches very low: PV vs baseline forecast, else instantaneous discharge."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
@@ -626,6 +628,10 @@ class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
             hrs = data.get("battery_runtime_hours")
             self._attr_extra_state_attributes = {
                 "hhmm": data.get("battery_runtime_hhmm", "99:59"),
+                "edge_time_iso": data.get("battery_horizon_to_very_low_edge_iso"),
+                "method": data.get("battery_horizon_method", "instantaneous"),
+                "target_soc_percent": BATTERY_SOC_VERY_LOW_PERCENT,
+                "hourly_projection": data.get("battery_horizon_hourly") or [],
             }
             if hrs is None:
                 self._attr_available = False
@@ -697,7 +703,7 @@ class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
 
 
 class EnergyManagerBatteryTimeToFullSensor(EnergyManagerSensorBase):
-    """Battery time to full at current charge rate (hours); hhmm in attributes."""
+    """Time until SOC reaches planning full: PV vs baseline forecast, else instantaneous charge."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
@@ -720,6 +726,10 @@ class EnergyManagerBatteryTimeToFullSensor(EnergyManagerSensorBase):
             hrs = data.get("battery_time_to_full_hours")
             self._attr_extra_state_attributes = {
                 "hhmm": data.get("battery_time_to_full_hhmm", "99:59"),
+                "edge_time_iso": data.get("battery_horizon_to_full_edge_iso"),
+                "method": data.get("battery_horizon_method", "instantaneous"),
+                "target_soc_percent": EOD_BATTERY_TARGET_PLANNING_PERCENT,
+                "hourly_projection": data.get("battery_horizon_hourly") or [],
             }
             if hrs is None:
                 self._attr_available = False
