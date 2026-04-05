@@ -1,0 +1,22 @@
+# Local helper scripts (Windows)
+*.bat
+*.cmd
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+.env.*
+
+# OS / editor
+Thumbs.db
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Local overrides / scratch
+*.local
