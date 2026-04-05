@@ -18,5 +18,11 @@ Thumbs.db
 *.swo
 *~
 
+# IDE / local tooling (Cursor, VS Code, JetBrains)
+.cursor/
+.vscode/
+.idea/
+*.code-workspace
+
 # Local overrides / scratch
 *.local
