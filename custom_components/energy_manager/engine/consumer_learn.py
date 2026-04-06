@@ -169,6 +169,14 @@ class ConsumerLearner:
     def get_pending_counts(self) -> dict[str, int]:
         return {k: len(v) for k, v in self._runtime.pending_w.items()}
 
+    def get_pending_samples_kw(self) -> dict[str, list[float]]:
+        """Per consumer not yet finalized: house-meter delta samples as kW (same scale as learned_kw)."""
+        return {
+            eid: [round(w / 1000.0, 3) for w in watts]
+            for eid, watts in self._runtime.pending_w.items()
+            if watts
+        }
+
     def is_learned(self, entity_id: str) -> bool:
         return entity_id in self._runtime.learned_kw
 

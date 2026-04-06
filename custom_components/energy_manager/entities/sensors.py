@@ -680,7 +680,7 @@ class EnergyManagerBaselineForecastSensor(EnergyManagerSensorBase):
 
 
 class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
-    """Sum of learned per-consumer power (kW); attributes list each consumer and pending sample counts."""
+    """Sum of learned per-consumer power (kW); attributes include learned kW, pending counts, and pending sample kW lists."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
@@ -703,6 +703,7 @@ class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
             self._attr_extra_state_attributes = {
                 "consumers_kw": data.get("consumer_learned_kw") or {},
                 "pending_samples": data.get("consumer_learn_pending_samples") or {},
+                "pending_samples_kw": data.get("consumer_learn_pending_kw") or {},
             }
         self.async_write_ha_state()
 

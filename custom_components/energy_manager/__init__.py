@@ -67,6 +67,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                         "consumer_learned_kw": coord.consumer_learner.get_learned_kw(),
                         "consumer_learned_power_kw": 0.0,
                         "consumer_learn_pending_samples": coord.consumer_learner.get_pending_counts(),
+                        "consumer_learn_pending_kw": coord.consumer_learner.get_pending_samples_kw(),
                     }
                 )
 

@@ -334,12 +334,14 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.data is not None:
             learned = self.consumer_learner.get_learned_kw()
             pending = self.consumer_learner.get_pending_counts()
+            pending_kw = self.consumer_learner.get_pending_samples_kw()
             self.async_set_updated_data(
                 {
                     **self.data,
                     "consumer_learned_kw": learned,
                     "consumer_learned_power_kw": round(sum(learned.values()), 3),
                     "consumer_learn_pending_samples": pending,
+                    "consumer_learn_pending_kw": pending_kw,
                 }
             )
 
@@ -890,6 +892,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     sum(self.consumer_learner.get_learned_kw().values()), 3
                 ),
                 "consumer_learn_pending_samples": self.consumer_learner.get_pending_counts(),
+                "consumer_learn_pending_kw": self.consumer_learner.get_pending_samples_kw(),
                 "consumer_budget_raw_kw": round(raw_budget_kw, 3)
                 if decision.system_mode == SYSTEM_MODE_WASTING
                 else None,
