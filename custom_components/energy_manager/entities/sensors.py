@@ -639,6 +639,7 @@ class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
                 "hourly_projection": data.get("battery_horizon_hourly") or [],
             }
             if hrs is None:
+                self._attr_native_value = None
                 self._attr_available = False
             else:
                 self._attr_available = True
@@ -785,6 +786,7 @@ class EnergyManagerBatteryTimeToFullSensor(EnergyManagerSensorBase):
                 "hourly_projection": data.get("battery_horizon_hourly") or [],
             }
             if hrs is None:
+                self._attr_native_value = None
                 self._attr_available = False
             else:
                 self._attr_available = True
