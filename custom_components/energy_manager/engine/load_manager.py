@@ -2,6 +2,8 @@
 Load manager – ACTIONS: turn on/off consumer switches (and optional lights) by priority.
 Wasting mode uses learned consumer budget from coordinator (greedy target set), with
 1 min between actions for learned entities and 5 min for unlearned (learning path).
+After the integration turns a consumer on, it is not turned off again until
+CONSUMER_MIN_ON_MINUTES have elapsed (saving / discharge_over_limit exempt).
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from ..const import (
     CONSUMER_ACTION_DELAY_LEARNED_MINUTES,
     CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
+    CONSUMER_MIN_ON_MINUTES,
     SYSTEM_MODE_EMERGENCY_SAVING,
     SYSTEM_MODE_SAVING,
     SYSTEM_MODE_WASTING,
@@ -94,6 +97,7 @@ class LoadManager:
         self._last_turn_on_time: datetime | None = None
         self._last_turn_on_delay_sec: int = CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES * 60
         self._last_turn_off_delay_sec: int = CONSUMER_ACTION_DELAY_LEARNED_MINUTES * 60
+        self._integration_turn_on_at_utc: dict[str, datetime] = {}
 
     async def _log_action(
         self,
@@ -142,6 +146,27 @@ class LoadManager:
             return True
         elapsed = (datetime.now(timezone.utc) - self._last_turn_off_time).total_seconds()
         return elapsed >= max(need, self._last_turn_off_delay_sec)
+
+    def _min_on_seconds(self) -> float:
+        return float(CONSUMER_MIN_ON_MINUTES) * 60.0
+
+    def _can_turn_off_after_min_on(self, entity_id: str) -> bool:
+        """Block turn-off until CONSUMER_MIN_ON_MINUTES after we turned this entity on."""
+        t0 = self._integration_turn_on_at_utc.get(entity_id)
+        if t0 is None:
+            return True
+        elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
+        return elapsed >= self._min_on_seconds()
+
+    async def _turn_on_consumer(self, entity_id: str) -> None:
+        """turn_on consumer and record UTC time when we transition off -> on."""
+        if not self._domain(entity_id):
+            return
+        state = self.hass.states.get(entity_id)
+        was_off = state is None or state.state != "on"
+        await self._call_turn_on(entity_id)
+        if was_off:
+            self._integration_turn_on_at_utc[entity_id] = datetime.now(timezone.utc)
 
     async def apply_mode(
         self,
@@ -224,6 +249,7 @@ class LoadManager:
             self.state.consumers_turned_on_by_wasting.append(entity_id)
 
     def _remove_managed(self, entity_id: str) -> None:
+        self._integration_turn_on_at_utc.pop(entity_id, None)
         while entity_id in self.state.consumers_turned_on_by_wasting:
             self.state.consumers_turned_on_by_wasting.remove(entity_id)
 
@@ -236,17 +262,20 @@ class LoadManager:
         ]
         if not to_consider or not self._can_turn_off_another_normal():
             return
-        entity_id = to_consider[-1]
-        self._remove_managed(entity_id)
-        await self._call_turn_off([entity_id])
-        self._last_turn_off_time = datetime.now(timezone.utc)
-        _LOGGER.debug("Turned off (normal, LIFO): %s", entity_id)
-        await self._log_action(
-            "INFO",
-            "consumer_turned_off",
-            f"Turned off {entity_id} (normal LIFO)",
-            {"entity_id": entity_id, "reason_code": "normal_lifo"},
-        )
+        for entity_id in reversed(to_consider):
+            if not self._can_turn_off_after_min_on(entity_id):
+                continue
+            self._remove_managed(entity_id)
+            await self._call_turn_off([entity_id])
+            self._last_turn_off_time = datetime.now(timezone.utc)
+            _LOGGER.debug("Turned off (normal, LIFO): %s", entity_id)
+            await self._log_action(
+                "INFO",
+                "consumer_turned_off",
+                f"Turned off {entity_id} (normal LIFO)",
+                {"entity_id": entity_id, "reason_code": "normal_lifo"},
+            )
+            return
 
     def _super_saving_entity_ids(self, entity_ids: list[str]) -> list[str]:
         """Return only entities in domains we can turn off in super-saving."""
@@ -304,6 +333,7 @@ class LoadManager:
                 },
             )
         self.state.consumers_turned_on_by_wasting.clear()
+        self._integration_turn_on_at_utc.clear()
 
     async def _apply_wasting_budget(
         self,
@@ -328,6 +358,8 @@ class LoadManager:
             if not is_on(eid):
                 continue
             if not self._can_turn_off_after_delay(eid, learned_kw):
+                continue
+            if not self._can_turn_off_after_min_on(eid):
                 continue
             await self._call_turn_off([eid])
             self._remove_managed(eid)
@@ -354,7 +386,7 @@ class LoadManager:
             baseline_w: float | None = None
             if self._schedule_consumer_learn and house_consumption_entity_id:
                 baseline_w = _read_power_w(self.hass, house_consumption_entity_id)
-            await self._call_turn_on(eid)
+            await self._turn_on_consumer(eid)
             self._append_managed(eid)
             self._last_turn_on_time = datetime.now(timezone.utc)
             self._last_turn_on_delay_sec = self._delay_seconds_for_entity(eid, learned_kw)
@@ -385,7 +417,7 @@ class LoadManager:
                 baseline_w: float | None = None
                 if self._schedule_consumer_learn and house_consumption_entity_id:
                     baseline_w = _read_power_w(self.hass, house_consumption_entity_id)
-                await self._call_turn_on(candidate)
+                await self._turn_on_consumer(candidate)
                 self._append_managed(candidate)
                 self._last_turn_on_time = datetime.now(timezone.utc)
                 self._last_turn_on_delay_sec = self._delay_seconds_for_entity(
@@ -419,17 +451,12 @@ class LoadManager:
         for entity_id in consumers:
             state = self.hass.states.get(entity_id)
             if state and state.state != "on":
+                if not self._domain(entity_id):
+                    continue
                 baseline_w: float | None = None
                 if self._schedule_consumer_learn and house_consumption_entity_id:
                     baseline_w = _read_power_w(self.hass, house_consumption_entity_id)
-                domain = self._domain(entity_id)
-                if domain:
-                    await self.hass.services.async_call(
-                        domain,
-                        "turn_on",
-                        {"entity_id": entity_id},
-                        blocking=True,
-                    )
+                await self._turn_on_consumer(entity_id)
                 self._last_turn_on_time = datetime.now(timezone.utc)
                 self._last_turn_on_delay_sec = self._delay_seconds_for_entity(
                     entity_id, learned_kw
@@ -453,11 +480,10 @@ class LoadManager:
     async def discharge_over_limit_turn_off_one(
         self,
         consumer_entity_ids: list[str],
-        learned_kw: dict[str, float] | None = None,
+        learned_kw: dict[str, float] | None = None,  # unused; kept for call-site compatibility
     ) -> None:
-        """Turn off one on-consumer: prefer highest learned kW, else reverse list order."""
+        """Turn off one on-consumer: lowest config priority first (inverse of turn-on order)."""
         consumers = self._consumer_entity_ids(consumer_entity_ids or [])
-        learned_kw = learned_kw or {}
         on_list = [
             eid
             for eid in consumers
@@ -465,11 +491,8 @@ class LoadManager:
         ]
         if not on_list:
             return
-        if learned_kw:
-            on_list.sort(key=lambda e: learned_kw.get(e, 0.0), reverse=True)
-        else:
-            order_i = {e: i for i, e in enumerate(consumers)}
-            on_list.sort(key=lambda e: order_i.get(e, 999), reverse=True)
+        order_i = {e: i for i, e in enumerate(consumers)}
+        on_list.sort(key=lambda e: order_i.get(e, 999), reverse=True)
         entity_id = on_list[0]
         domain = self._domain(entity_id)
         if domain:

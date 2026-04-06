@@ -15,6 +15,7 @@ Instant surplus (v1):
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ..const import (
@@ -28,10 +29,12 @@ from ..const import (
     MARGIN_MEDIUM_MAX,
 )
 
-_BATTERY_LOAD_MARGIN = 0.05
+from .battery_horizon import compute_battery_edge_horizons
 
 if TYPE_CHECKING:
     from .energy_model import EnergyModel
+
+_BATTERY_LOAD_MARGIN = 0.05
 
 
 @dataclass
@@ -247,3 +250,71 @@ def next_unlearned_for_sampling(
             continue
         return eid
     return None
+
+
+def trim_learned_consumers_for_very_low_horizon(
+    selected: set[str],
+    consumers_ordered: list[str],
+    learned_kw: dict[str, float],
+    marginal_battery_per_kw: float,
+    *,
+    now_local: datetime,
+    soc_percent: float,
+    capacity_kwh: float,
+    very_low_percent: float,
+    target_full_percent: float,
+    max_charge_kw: float,
+    max_discharge_kw: float,
+    baseline_hourly_kw: list[float],
+    pv_kw_slots: list[float],
+    time_iso_slots: list[str],
+    hours_until_first_pv: float,
+) -> set[str]:
+    """
+    Drop lowest-priority selected consumers until PV+baseline+extra projection does not
+    cross very_low within the hourly forecast horizon (or until a simple kWh fallback passes).
+    """
+    m = max(0.0, min(1.0, marginal_battery_per_kw))
+    if m < _BATTERY_LOAD_MARGIN:
+        return set(selected)
+
+    ordered_sel = [eid for eid in consumers_ordered if eid in selected]
+    if not ordered_sel:
+        return set()
+
+    forecast_ok = (
+        len(pv_kw_slots) >= 1
+        and len(pv_kw_slots) == len(time_iso_slots)
+        and capacity_kwh > 0
+    )
+
+    while ordered_sel:
+        total_kw = sum(learned_kw.get(eid, 0.0) for eid in ordered_sel) * m
+        safe = False
+        if forecast_ok:
+            _, to_vl = compute_battery_edge_horizons(
+                now_local=now_local,
+                soc_percent=soc_percent,
+                capacity_kwh=capacity_kwh,
+                max_charge_kw=max_charge_kw,
+                max_discharge_kw=max_discharge_kw,
+                pv_kw_slots=pv_kw_slots,
+                time_iso_slots=time_iso_slots,
+                baseline_hourly_kw=baseline_hourly_kw,
+                target_full_percent=target_full_percent,
+                target_very_low_percent=very_low_percent,
+                extra_house_load_kw=total_kw,
+            )
+            safe = to_vl.hours_until is None
+        else:
+            h = max(0.5, float(hours_until_first_pv or 12.0))
+            usable = max(
+                0.0,
+                (soc_percent - very_low_percent) / 100.0 * capacity_kwh,
+            )
+            safe = total_kw * h <= usable * 0.95
+        if safe:
+            break
+        ordered_sel.pop()
+
+    return set(ordered_sel)

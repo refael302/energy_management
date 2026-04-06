@@ -175,6 +175,8 @@ async def async_log_event(
     event: str,
     summary: str,
     context: dict[str, Any] | None = None,
+    *,
+    integration_alerts: bool = True,
 ) -> None:
     """
     Append one logical event to the per-entry ops log (main line; optional context line).
@@ -183,6 +185,7 @@ async def async_log_event(
     level: INFO | WARN | ERROR
     category: MODE | ACTION | FORECAST | LEARN | SYSTEM
     event: stable snake_case code (e.g. system_mode_changed)
+    integration_alerts: when False, write file only (no in-memory alert ring / last-alert sensor).
     """
     if not INTEGRATION_LOG_ENABLED or not entry_id:
         return
@@ -256,6 +259,7 @@ async def async_log_event(
                 "context": ctx if ctx else {},
             }
         )
-        _notify_coordinator_integration_alerts(hass, entry_id, records_to_push)
+        if integration_alerts:
+            _notify_coordinator_integration_alerts(hass, entry_id, records_to_push)
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("integration_log async_log_event failed: %s", err)

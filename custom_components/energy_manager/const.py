@@ -33,6 +33,9 @@ SERVICE_CLEAR_INTEGRATION_ALERTS = "clear_integration_alerts"
 # Unlearned interval is also used between turn-offs in Normal mode (LIFO ramp-down).
 CONSUMER_ACTION_DELAY_LEARNED_MINUTES = 1
 CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES = 5
+# Minimum time a consumer must stay on after the integration turns it on, before we may turn it off
+# again (wasting / normal LIFO). Saving mode and discharge_over_limit ignore this.
+CONSUMER_MIN_ON_MINUTES = 5
 # Hysteresis: only adopt new raw budget if relative change >= this ratio vs last locked budget
 # (fixed in code; not exposed in config UI)
 DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO = 0.15
@@ -75,6 +78,8 @@ CONSUMER_LEARN_TIMEOUT_SEC = 120.0
 
 # Update interval for coordinator (seconds)
 UPDATE_INTERVAL = 30
+# Ops log: full SYSTEM snapshot interval (seconds)
+HOURLY_SNAPSHOT_INTERVAL_SEC = 3600
 # Forecast and strategy cache (minutes) – fetch/update every 15 min, use cache between
 FORECAST_STRATEGY_CACHE_MINUTES = 15
 

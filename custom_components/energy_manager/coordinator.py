@@ -69,6 +69,7 @@ from .const import (
     EOD_BATTERY_TARGET_PLANNING_PERCENT,
     EMERGENCY_RESERVE_PLANNING_PERCENT,
     FORECAST_STRATEGY_CACHE_MINUTES,
+    INTEGRATION_LOG_ENABLED,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     UPDATE_INTERVAL,
@@ -81,9 +82,11 @@ from .engine.consumer_budget import (
     compute_raw_budget_kw,
     marginal_battery_load_fraction,
     select_learned_consumers,
+    trim_learned_consumers_for_very_low_horizon,
 )
 from .engine.load_manager import WastingContext
 from .engine.decision_engine import recommend_battery_strategy
+from .hourly_snapshot import build_hourly_snapshot_lines
 from .integration_log import async_log_event
 
 _LOGGER = logging.getLogger(__name__)
@@ -308,6 +311,33 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._integration_alert_seq = 0
         self.async_set_updated_data({**(self.data or {}), **self._integration_alert_data()})
 
+    async def async_log_hourly_snapshot(self) -> None:
+        """Append a readable multi-line SYSTEM snapshot to the ops log (once per hour)."""
+        if not INTEGRATION_LOG_ENABLED or not self.data:
+            return
+        try:
+            snapshot_id = dt_util.now().isoformat(timespec="seconds")
+            lines = build_hourly_snapshot_lines(
+                self.hass, self.data, self._entity_ids
+            )
+            n = len(lines)
+            for i, summary in enumerate(lines):
+                await async_log_event(
+                    self.hass,
+                    self.entry.entry_id,
+                    "INFO",
+                    "SYSTEM",
+                    "hourly_system_snapshot",
+                    summary,
+                    {
+                        "reason_code": f"snapshot_line_{i + 1:02d}_of_{n:02d}",
+                        "snapshot_id": snapshot_id,
+                    },
+                    integration_alerts=(i == 0),
+                )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Hourly ops snapshot skipped: %s", err)
+
     def _schedule_consumer_learn(self, entity_id: str, baseline_w: float) -> None:
         """After integration turns a consumer on, sample house meter delta (async)."""
         self.hass.async_create_task(
@@ -367,8 +397,18 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             manual_c = float(current_config.get(CONF_MAX_BATTERY_CHARGE_POWER_KW) or 0)
             learned_d = self.battery_peak_learner.peak_discharge_kw
             learned_c = self.battery_peak_learner.peak_charge_kw
-            self.model.max_battery_discharge_kw = _effective_battery_max_kw(manual_d, learned_d)
-            self.model.max_battery_charge_kw = _effective_battery_max_kw(manual_c, learned_c)
+            # Peaks are positive kW magnitudes; align auto discharge cap with charge envelope.
+            charge_effective = _effective_battery_max_kw(manual_c, learned_c)
+            self.model.max_battery_charge_kw = charge_effective
+            if manual_d > 0:
+                self.model.max_battery_discharge_kw = _effective_battery_max_kw(
+                    manual_d, learned_d
+                )
+            else:
+                self.model.max_battery_discharge_kw = max(
+                    MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
+                    min(float(learned_d), float(charge_effective)),
+                )
 
             fp_learn = consumer_learn_fingerprint(current_config)
             await self.consumer_learner.async_ensure_loaded(fp_learn)
@@ -648,6 +688,36 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     effective_budget_kw,
                     budget_ceilings.discharge_kw,
                     marginal,
+                )
+                pv_guard: list[float] = []
+                time_guard: list[str] = []
+                if forecast_available:
+                    pv_guard = list(
+                        getattr(forecast, "forecast_today_remaining_hourly_kw", []) or []
+                    ) + list(
+                        getattr(forecast, "forecast_tomorrow_hourly_kw", []) or []
+                    )
+                    time_guard = list(
+                        getattr(forecast, "forecast_today_remaining_times_iso", []) or []
+                    ) + list(
+                        getattr(forecast, "forecast_tomorrow_hourly_times_iso", []) or []
+                    )
+                learned_target = trim_learned_consumers_for_very_low_horizon(
+                    learned_target,
+                    consumer_list,
+                    learned_map,
+                    marginal,
+                    now_local=dt_util.now(),
+                    soc_percent=float(soc),
+                    capacity_kwh=float(self.model.battery_capacity_kwh),
+                    very_low_percent=float(BATTERY_SOC_VERY_LOW_PERCENT),
+                    target_full_percent=float(EOD_BATTERY_TARGET_PLANNING_PERCENT),
+                    max_charge_kw=float(self.model.max_battery_charge_kw),
+                    max_discharge_kw=float(self.model.max_battery_discharge_kw),
+                    baseline_hourly_kw=list(self.model.baseline_hourly_kw),
+                    pv_kw_slots=pv_guard,
+                    time_iso_slots=time_guard,
+                    hours_until_first_pv=float(self.model.hours_until_first_pv),
                 )
                 wasting_context = WastingContext(
                     consumers_ordered=consumer_list,

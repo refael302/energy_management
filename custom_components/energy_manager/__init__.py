@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -10,8 +11,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr, entity_registry as er
+from homeassistant.helpers.event import async_track_time_interval
 
-from .const import DOMAIN, NAME, SERVICE_CLEAR_INTEGRATION_ALERTS, SERVICE_RESET_CONSUMER_LEARN
+from .const import (
+    DOMAIN,
+    HOURLY_SNAPSHOT_INTERVAL_SEC,
+    NAME,
+    SERVICE_CLEAR_INTEGRATION_ALERTS,
+    SERVICE_RESET_CONSUMER_LEARN,
+)
 from .coordinator import EnergyManagerCoordinator
 from .engine.consumer_learn_cache import consumer_learn_fingerprint
 
@@ -241,6 +249,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = EnergyManagerCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    async def _hourly_ops_snapshot(_now: Any = None) -> None:
+        await coordinator.async_log_hourly_snapshot()
+
+    entry.async_on_unload(
+        async_track_time_interval(
+            hass,
+            _hourly_ops_snapshot,
+            timedelta(seconds=HOURLY_SNAPSHOT_INTERVAL_SEC),
+        )
+    )
     await _async_register_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Link all entities for this config entry to this device

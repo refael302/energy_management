@@ -7,6 +7,7 @@ from .consumer_budget import (
     compute_raw_budget_kw,
     marginal_battery_load_fraction,
     select_learned_consumers,
+    trim_learned_consumers_for_very_low_horizon,
 )
 from .decision_engine import DecisionEngine
 from .energy_model import EnergyModel
@@ -25,4 +26,5 @@ __all__ = [
     "compute_raw_budget_kw",
     "marginal_battery_load_fraction",
     "select_learned_consumers",
+    "trim_learned_consumers_for_very_low_horizon",
 ]

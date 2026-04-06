@@ -64,12 +64,15 @@ def compute_battery_edge_horizons(
     baseline_hourly_kw: list[float],
     target_full_percent: float,
     target_very_low_percent: float,
+    extra_house_load_kw: float = 0.0,
 ) -> tuple[EdgeHorizonResult, EdgeHorizonResult]:
     """
     Walk hourly PV vs baseline house load; battery absorbs surplus up to max_charge,
     covers deficit up to max_discharge. Returns (to_full, to_very_low).
+    extra_house_load_kw: constant additional house draw (e.g. consumer waste load on battery).
     """
     baseline24 = _ensure_24(baseline_hourly_kw)
+    extra_h = float(extra_house_load_kw)
     n = min(len(pv_kw_slots), len(time_iso_slots))
     if n <= 0 or capacity_kwh <= 0:
         empty = EdgeHorizonResult(
@@ -108,7 +111,7 @@ def compute_battery_edge_horizons(
         dt = _parse_time_iso(t_iso)
         if dt is None:
             continue
-        house = _house_kw_for_datetime(dt, baseline24)
+        house = _house_kw_for_datetime(dt, baseline24) + extra_h
         spare = pv - house
         if spare >= 0.0:
             ch_kw = min(spare, max_c)
