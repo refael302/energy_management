@@ -29,6 +29,25 @@ from .consumer_learn_cache import create_consumer_learn_store
 _LOGGER = logging.getLogger(__name__)
 
 
+def _normalize_pending_w(raw: Any) -> dict[str, list[float]]:
+    """Restore pending samples from store JSON (watts per consumer)."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, list[float]] = {}
+    for k, v in raw.items():
+        if not isinstance(k, str) or not isinstance(v, list):
+            continue
+        nums: list[float] = []
+        for x in v:
+            try:
+                nums.append(float(x))
+            except (TypeError, ValueError):
+                continue
+        if nums:
+            out[k] = nums
+    return out
+
+
 def spread_ratio(vals: list[float]) -> float:
     """Relative spread (max-min)/mean; high if inconsistent."""
     if len(vals) < 2:
@@ -118,15 +137,21 @@ class ConsumerLearnRuntime:
     pending_w: dict[str, list[float]] = field(default_factory=dict)
 
     def apply_fingerprint(self, fp: str, store_data: dict[str, Any] | None) -> None:
-        """Reset or load from store when fingerprint matches."""
+        """Load learned + pending from store when fingerprint matches; else clear both."""
         self.fingerprint = fp
+        self.learned_kw.clear()
         self.pending_w.clear()
-        if store_data and store_data.get("fingerprint") == fp and store_data.get("learned_kw"):
+        if not store_data or store_data.get("fingerprint") != fp:
+            return
+        kw_raw = store_data.get("learned_kw")
+        if isinstance(kw_raw, dict):
             self.learned_kw = {
-                k: float(v) for k, v in store_data["learned_kw"].items() if isinstance(k, str)
+                k: float(v) for k, v in kw_raw.items() if isinstance(k, str)
             }
-        else:
-            self.learned_kw.clear()
+        self.pending_w = _normalize_pending_w(store_data.get("pending_w"))
+        for eid in list(self.pending_w.keys()):
+            if eid in self.learned_kw:
+                del self.pending_w[eid]
 
 
 class ConsumerLearner:
@@ -140,6 +165,13 @@ class ConsumerLearner:
         self._lock = asyncio.Lock()
         self._loaded = False
 
+    def _persist_dict(self) -> dict[str, Any]:
+        return {
+            "fingerprint": self._runtime.fingerprint,
+            "learned_kw": dict(self._runtime.learned_kw),
+            "pending_w": {k: list(v) for k, v in self._runtime.pending_w.items() if v},
+        }
+
     @property
     def store(self) -> Store:
         return self._store
@@ -150,18 +182,19 @@ class ConsumerLearner:
                 raw = await self._store.async_load()
                 self._loaded = True
                 data = raw if isinstance(raw, dict) else {}
-                self._runtime.apply_fingerprint(fingerprint, data)
+                if data.get("fingerprint") == fingerprint:
+                    self._runtime.apply_fingerprint(fingerprint, data)
+                else:
+                    self._runtime.apply_fingerprint(fingerprint, None)
                 return
             if fingerprint != self._runtime.fingerprint:
                 raw = await self._store.async_load()
                 disk = raw if isinstance(raw, dict) else {}
-                if disk.get("fingerprint") == fingerprint and disk.get("learned_kw"):
+                if disk.get("fingerprint") == fingerprint:
                     self._runtime.apply_fingerprint(fingerprint, disk)
                 else:
                     self._runtime.apply_fingerprint(fingerprint, None)
-                    await self._store.async_save(
-                        {"fingerprint": fingerprint, "learned_kw": {}}
-                    )
+                    await self._store.async_save(self._persist_dict())
 
     def get_learned_kw(self) -> dict[str, float]:
         return dict(self._runtime.learned_kw)
@@ -181,11 +214,11 @@ class ConsumerLearner:
         return entity_id in self._runtime.learned_kw
 
     async def async_reset(self, fingerprint: str) -> None:
+        """Clear finalized learned power only; keep in-progress pending samples (and persist)."""
         async with self._lock:
-            self._runtime.apply_fingerprint(fingerprint, None)
-            await self._store.async_save(
-                {"fingerprint": fingerprint, "learned_kw": {}}
-            )
+            self._runtime.fingerprint = fingerprint
+            self._runtime.learned_kw.clear()
+            await self._store.async_save(self._persist_dict())
 
     async def async_record_delta_w(
         self, consumer_entity_id: str, delta_w: float, fingerprint: str
@@ -232,12 +265,7 @@ class ConsumerLearner:
                         "samples_used": str(n_used),
                     },
                 )
-                await self._store.async_save(
-                    {
-                        "fingerprint": self._runtime.fingerprint,
-                        "learned_kw": dict(self._runtime.learned_kw),
-                    }
-                )
+                await self._store.async_save(self._persist_dict())
             else:
                 _LOGGER.debug(
                     "Consumer learn: %s sample %.0f W (n=%d)",
@@ -245,3 +273,4 @@ class ConsumerLearner:
                     delta_w,
                     len(pending),
                 )
+                await self._store.async_save(self._persist_dict())

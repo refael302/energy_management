@@ -1,4 +1,4 @@
-"""Persist learned per-consumer power (kW) to disk; invalidate when consumer list or house sensor changes."""
+"""Persist learned power (kW) and in-progress learn samples (W) to disk; invalidate when consumer list or house sensor changes."""
 
 from __future__ import annotations
 
