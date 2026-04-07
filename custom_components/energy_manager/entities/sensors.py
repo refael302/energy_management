@@ -71,7 +71,7 @@ async def async_setup_entry(
             EnergyManagerBatteryPowerStateSensor(coordinator, entry),
             EnergyManagerBatteryPowerLimitsSensor(coordinator, entry),
             EnergyManagerRecommendedToTurnOffSensor(coordinator, entry),
-            EnergyManagerConsumersOnSensor(coordinator, entry),
+            EnergyManagerConsumerPowerStatusSensor(coordinator, entry),
             EnergyManagerBatteryRuntimeSensor(coordinator, entry),
             EnergyManagerBatteryTimeToFullSensor(coordinator, entry),
             EnergyManagerConsumerLearnedPowerSensor(coordinator, entry),
@@ -583,16 +583,19 @@ class EnergyManagerRecommendedToTurnOffSensor(EnergyManagerSensorBase):
         self.async_write_ha_state()
 
 
-class EnergyManagerConsumersOnSensor(EnergyManagerSensorBase):
-    """Number of configured consumer switches/input_booleans that are currently on (displayed as on/total)."""
+class EnergyManagerConsumerPowerStatusSensor(EnergyManagerSensorBase):
+    """Aggregated consumer actual power and expected/actual activity counters."""
 
     def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
         super().__init__(
             coordinator,
             entry,
-            "consumers_on_count",
-            "Consumers On",
-            icon="mdi:counter",
+            "consumer_total_actual_power_w",
+            "Consumer Power Status",
+            icon="mdi:flash-outline",
+            device_class=SensorDeviceClass.POWER,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfPower.WATT,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
 
@@ -600,12 +603,16 @@ class EnergyManagerConsumersOnSensor(EnergyManagerSensorBase):
     def _handle_coordinator_update(self) -> None:
         data = self.coordinator.data
         if data is not None:
-            on_count = data.get("consumers_on_count", 0)
-            total = data.get("consumers_total", 0)
-            self._attr_native_value = f"{on_count}/{total}"
+            total = int(data.get("consumers_total", 0) or 0)
+            self._attr_native_value = data.get("consumer_total_actual_power_w", 0.0)
+            known = max(0, total - int(data.get("consumer_unknown_actual_count", 0) or 0))
             self._attr_extra_state_attributes = {
-                "on_count": on_count,
+                "expected_on_count": data.get("consumer_expected_on_count", 0),
+                "actual_on_count": data.get("consumer_actual_on_count", 0),
+                "unknown_actual_count": data.get("consumer_unknown_actual_count", 0),
                 "total": total,
+                "coverage_ratio": round((known / total), 3) if total > 0 else 0.0,
+                "consumers": data.get("consumer_power_status_details") or {},
             }
         self.async_write_ha_state()
 
@@ -715,6 +722,7 @@ class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
             self._attr_native_value = data.get("consumer_learned_power_kw", 0.0)
             self._attr_extra_state_attributes = {
                 "consumers_kw": data.get("consumer_learned_kw") or {},
+                "consumers_metrics": data.get("consumer_learned_metrics") or {},
                 "pending_samples": data.get("consumer_learn_pending_samples") or {},
                 "pending_samples_kw": data.get("consumer_learn_pending_kw") or {},
             }

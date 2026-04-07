@@ -43,6 +43,16 @@
           "battery_horizon_verbose_attributes": "כאשר פעיל, Battery Runtime/Time To Full יציגו גם זמן יעד, יעד SOC, ותחזית שעה-אחר-שעה במאפיינים."
         }
       },
+      "consumer_power_sensor": {
+        "title": "שיוך חיישן הספק לצרכן",
+        "description": "צרכן {consumer_index}/{consumer_total}: {consumer_entity_id}. בחר חיישן הספק ייעודי לצרכן (אופציונלי), או השאר ריק כדי להמשיך עם fallback.",
+        "data": {
+          "power_sensor_entity_id": "חיישן הספק (אופציונלי)"
+        },
+        "data_description": {
+          "power_sensor_entity_id": "חיישן הספק ייעודי ב־W לצרכן זה."
+        }
+      },
       "strings": {
         "title": "סטרינגים סולאריים – זווית התקנה, כמות מותקנת",
         "description": "הגדרת 2 סטרינגים לתחזית שמש. לכל סטרינג: כמות מותקנת (kW), זווית התקנה – tilt (°), אזימוט (°).",
@@ -130,6 +140,9 @@
         }
       }
     }
+  },
+  "abort": {
+    "reconfigure_required": "ההגדרה הקיימת משתמשת במבנה צרכנים ישן. יש לבצע הגדרה מחדש כדי להגדיר consumers עם חיישני הספק אופציונליים."
   },
   "services": {
     "reset_consumer_learn": {

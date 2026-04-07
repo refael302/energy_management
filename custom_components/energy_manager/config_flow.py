@@ -10,12 +10,17 @@ from homeassistant.core import HomeAssistant, callback
 
 from .config_schema import (
     _home_lat_lon,
+    consumer_power_sensor_schema,
     main_params_schema_advanced,
     main_params_schema_minimal,
     strings_schema_from_config,
     strings_schema_install_defaults,
 )
 from .const import (
+    CONF_CONSUMERS,
+    CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
+    CONF_CONSUMER_SWITCHES,
+    CONF_CONSUMER_SWITCH_ENTITY_ID,
     CONF_AZIMUTH,
     CONF_LATITUDE,
     CONF_LIGHTS_TO_TURN_OFF,
@@ -62,12 +67,15 @@ def _latitude_longitude_preserve_or_home(
 class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Energy Manager."""
 
-    VERSION = 8
+    VERSION = 9
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize."""
         super().__init__(*args, **kwargs)
         self._user_input: dict[str, Any] | None = None
+        self._consumer_switches: list[str] = []
+        self._consumer_defs: list[dict[str, Any]] = []
+        self._consumer_idx: int = 0
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -75,10 +83,45 @@ class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Step 1: required sensors and consumer switches."""
         if user_input is not None:
             self._user_input = dict(user_input)
-            return await self.async_step_advanced()
+            raw_switches = self._user_input.get(CONF_CONSUMER_SWITCHES) or []
+            self._consumer_switches = list(raw_switches) if isinstance(raw_switches, list) else [raw_switches]
+            self._consumer_defs = []
+            self._consumer_idx = 0
+            return await self.async_step_consumer_power_sensor()
         return self.async_show_form(
             step_id="user",
             data_schema=main_params_schema_minimal(),
+        )
+
+    async def async_step_consumer_power_sensor(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Per-consumer optional power sensor assignment."""
+        if self._user_input is None:
+            return await self.async_step_user()
+        if self._consumer_idx >= len(self._consumer_switches):
+            self._user_input[CONF_CONSUMERS] = list(self._consumer_defs)
+            self._user_input.pop(CONF_CONSUMER_SWITCHES, None)
+            return await self.async_step_advanced()
+        switch_entity_id = self._consumer_switches[self._consumer_idx]
+        if user_input is not None:
+            sensor_eid = user_input.get(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID) or None
+            self._consumer_defs.append(
+                {
+                    CONF_CONSUMER_SWITCH_ENTITY_ID: switch_entity_id,
+                    CONF_CONSUMER_POWER_SENSOR_ENTITY_ID: sensor_eid,
+                }
+            )
+            self._consumer_idx += 1
+            return await self.async_step_consumer_power_sensor()
+        return self.async_show_form(
+            step_id="consumer_power_sensor",
+            data_schema=consumer_power_sensor_schema(""),
+            description_placeholders={
+                "consumer_index": str(self._consumer_idx + 1),
+                "consumer_total": str(len(self._consumer_switches)),
+                "consumer_entity_id": switch_entity_id,
+            },
         )
 
     async def async_step_advanced(
@@ -134,6 +177,17 @@ class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     """Handle Energy Manager options (minimal → advanced → PV strings)."""
 
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        super().__init__(config_entry)
+        self._consumer_switches: list[str] = []
+        self._consumer_defs: list[dict[str, Any]] = []
+        self._consumer_idx: int = 0
+
+    @staticmethod
+    def _has_new_consumers_config(merged: dict[str, Any]) -> bool:
+        raw = merged.get(CONF_CONSUMERS)
+        return isinstance(raw, list) and len(raw) > 0
+
     def _merged_config(self) -> dict[str, Any]:
         """Current config = data + options."""
         return {
@@ -145,13 +199,49 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Step 1: sensors and consumer switches."""
+        merged = self._merged_config()
+        if not self._has_new_consumers_config(merged):
+            return self.async_abort(reason="reconfigure_required")
         if user_input is not None:
             self._options_partial = dict(user_input)
-            return await self.async_step_advanced()
-        merged = self._merged_config()
+            raw_switches = self._options_partial.get(CONF_CONSUMER_SWITCHES) or []
+            self._consumer_switches = list(raw_switches) if isinstance(raw_switches, list) else [raw_switches]
+            self._consumer_defs = []
+            self._consumer_idx = 0
+            return await self.async_step_consumer_power_sensor()
         return self.async_show_form(
             step_id="init",
             data_schema=main_params_schema_minimal(merged),
+        )
+
+    async def async_step_consumer_power_sensor(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        if not hasattr(self, "_options_partial"):
+            return await self.async_step_init()
+        if self._consumer_idx >= len(self._consumer_switches):
+            self._options_partial[CONF_CONSUMERS] = list(self._consumer_defs)
+            self._options_partial.pop(CONF_CONSUMER_SWITCHES, None)
+            return await self.async_step_advanced()
+        switch_entity_id = self._consumer_switches[self._consumer_idx]
+        if user_input is not None:
+            sensor_eid = user_input.get(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID) or None
+            self._consumer_defs.append(
+                {
+                    CONF_CONSUMER_SWITCH_ENTITY_ID: switch_entity_id,
+                    CONF_CONSUMER_POWER_SENSOR_ENTITY_ID: sensor_eid,
+                }
+            )
+            self._consumer_idx += 1
+            return await self.async_step_consumer_power_sensor()
+        return self.async_show_form(
+            step_id="consumer_power_sensor",
+            data_schema=consumer_power_sensor_schema(""),
+            description_placeholders={
+                "consumer_index": str(self._consumer_idx + 1),
+                "consumer_total": str(len(self._consumer_switches)),
+                "consumer_entity_id": switch_entity_id,
+            },
         )
 
     async def async_step_advanced(

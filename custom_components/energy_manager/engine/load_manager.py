@@ -30,19 +30,6 @@ from .consumer_budget import next_unlearned_for_sampling
 _LOGGER = logging.getLogger(__name__)
 
 
-def _read_power_w(hass: HomeAssistant, entity_id: str | None) -> float | None:
-    """House consumption in W; None if missing or not numeric."""
-    if not entity_id:
-        return None
-    state = hass.states.get(entity_id)
-    if state is None or state.state in ("unknown", "unavailable", ""):
-        return None
-    try:
-        return float(state.state)
-    except (TypeError, ValueError):
-        return None
-
-
 # Entities that can be used as consumers (turn_on/turn_off).
 CONSUMER_DOMAINS = ("switch", "input_boolean")
 
@@ -82,7 +69,7 @@ class LoadManager:
         consumer_entity_ids: list[str],
         lights_entity_ids: list[str],
         delay_minutes: int,
-        schedule_consumer_learn: Callable[[str, float], None] | None = None,
+        schedule_consumer_learn: Callable[[str], None] | None = None,
         *,
         integration_entry_id: str | None = None,
     ) -> None:
@@ -383,9 +370,6 @@ class LoadManager:
                 continue
             if not self._can_turn_on_after_delay(eid, learned_kw):
                 continue
-            baseline_w: float | None = None
-            if self._schedule_consumer_learn and house_consumption_entity_id:
-                baseline_w = _read_power_w(self.hass, house_consumption_entity_id)
             await self._turn_on_consumer(eid)
             self._append_managed(eid)
             self._last_turn_on_time = datetime.now(timezone.utc)
@@ -397,12 +381,8 @@ class LoadManager:
                 f"Wasting: turned on {eid} (in budget target)",
                 {"entity_id": eid, "reason_code": "wasting_target"},
             )
-            if (
-                self._schedule_consumer_learn
-                and house_consumption_entity_id
-                and baseline_w is not None
-            ):
-                self._schedule_consumer_learn(eid, baseline_w)
+            if self._schedule_consumer_learn:
+                self._schedule_consumer_learn(eid)
             return
 
         candidate = next_unlearned_for_sampling(
@@ -414,9 +394,6 @@ class LoadManager:
         )
         if candidate and not is_on(candidate):
             if self._can_turn_on_after_delay(candidate, learned_kw):
-                baseline_w: float | None = None
-                if self._schedule_consumer_learn and house_consumption_entity_id:
-                    baseline_w = _read_power_w(self.hass, house_consumption_entity_id)
                 await self._turn_on_consumer(candidate)
                 self._append_managed(candidate)
                 self._last_turn_on_time = datetime.now(timezone.utc)
@@ -430,12 +407,8 @@ class LoadManager:
                     f"Wasting: turned on {candidate} (unlearned sampling)",
                     {"entity_id": candidate, "reason_code": "wasting_learn_path"},
                 )
-                if (
-                    self._schedule_consumer_learn
-                    and house_consumption_entity_id
-                    and baseline_w is not None
-                ):
-                    self._schedule_consumer_learn(candidate, baseline_w)
+                if self._schedule_consumer_learn:
+                    self._schedule_consumer_learn(candidate)
 
     async def _apply_wasting_fallback(
         self,
@@ -453,9 +426,6 @@ class LoadManager:
             if state and state.state != "on":
                 if not self._domain(entity_id):
                     continue
-                baseline_w: float | None = None
-                if self._schedule_consumer_learn and house_consumption_entity_id:
-                    baseline_w = _read_power_w(self.hass, house_consumption_entity_id)
                 await self._turn_on_consumer(entity_id)
                 self._last_turn_on_time = datetime.now(timezone.utc)
                 self._last_turn_on_delay_sec = self._delay_seconds_for_entity(
@@ -469,12 +439,8 @@ class LoadManager:
                     f"Wasting fallback: turned on {entity_id}",
                     {"entity_id": entity_id, "reason_code": "wasting_fallback"},
                 )
-                if (
-                    self._schedule_consumer_learn
-                    and house_consumption_entity_id
-                    and baseline_w is not None
-                ):
-                    self._schedule_consumer_learn(entity_id, baseline_w)
+                if self._schedule_consumer_learn:
+                    self._schedule_consumer_learn(entity_id)
                 return
 
     async def discharge_over_limit_turn_off_one(

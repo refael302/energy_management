@@ -19,6 +19,7 @@ from .const import (
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONSUMER_SWITCHES,
+    CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
     CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
@@ -130,6 +131,18 @@ def main_params_schema_minimal(
                 CONF_BATTERY_CAPACITY,
                 default=merged.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY),
             ): vol.Coerce(float),
+        }
+    )
+
+
+def consumer_power_sensor_schema(default_sensor: str = "") -> vol.Schema:
+    """Per-consumer optional power sensor step."""
+    return vol.Schema(
+        {
+            vol.Optional(
+                CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
+                default=default_sensor,
+            ): sensor_selector(),
         }
     )
 

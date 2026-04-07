@@ -19,7 +19,7 @@ from .engine.baseline_profile_learn import (
     residual_house_kw,
     unlearned_consumer_on,
 )
-from .engine.consumer_learn import ConsumerLearner, async_wait_house_power_after_turn_on
+from .engine.consumer_learn import ConsumerLearner
 from .engine.battery_power_limit_learn import BatteryPowerPeakLearner
 from .engine.consumer_learn_cache import consumer_learn_fingerprint
 from .engine.forecast_cache import (
@@ -42,7 +42,9 @@ from .const import (
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
-    CONF_CONSUMER_SWITCHES,
+    CONF_CONSUMERS,
+    CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
+    CONF_CONSUMER_SWITCH_ENTITY_ID,
     CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
@@ -70,6 +72,7 @@ from .const import (
     EMERGENCY_RESERVE_PLANNING_PERCENT,
     FORECAST_STRATEGY_CACHE_MINUTES,
     INTEGRATION_LOG_ENABLED,
+    CONSUMER_ACTIVE_POWER_THRESHOLD_W,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     UPDATE_INTERVAL,
@@ -131,6 +134,35 @@ def _normalize_consumer_entity_ids(raw: Any) -> list[str]:
             eid = item.get("entity_id") or item.get("id")
             if isinstance(eid, str):
                 out.append(eid)
+    return out
+
+
+def _normalize_consumers(raw: Any) -> list[dict[str, str | None]]:
+    """Normalize consumer definitions to [{switch_entity_id, power_sensor_entity_id}]."""
+    if not raw:
+        return []
+    out: list[dict[str, str | None]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, str):
+                out.append(
+                    {
+                        CONF_CONSUMER_SWITCH_ENTITY_ID: item,
+                        CONF_CONSUMER_POWER_SENSOR_ENTITY_ID: None,
+                    }
+                )
+                continue
+            if isinstance(item, dict):
+                switch_eid = item.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
+                if not isinstance(switch_eid, str):
+                    continue
+                sensor_eid = item.get(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID)
+                out.append(
+                    {
+                        CONF_CONSUMER_SWITCH_ENTITY_ID: switch_eid,
+                        CONF_CONSUMER_POWER_SENSOR_ENTITY_ID: sensor_eid if isinstance(sensor_eid, str) and sensor_eid else None,
+                    }
+                )
     return out
 
 
@@ -198,9 +230,12 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             pr_factor=float(data.get(CONF_FORECAST_PR, DEFAULT_FORECAST_PR)),
         )
         self.decision_engine = DecisionEngine()
-        consumer_switches = data.get(CONF_CONSUMER_SWITCHES) or []
-        if isinstance(consumer_switches, str):
-            consumer_switches = [consumer_switches]
+        self._consumers = _normalize_consumers(data.get(CONF_CONSUMERS))
+        consumer_switches = [
+            c.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
+            for c in self._consumers
+            if isinstance(c.get(CONF_CONSUMER_SWITCH_ENTITY_ID), str)
+        ]
         lights = data.get(CONF_LIGHTS_TO_TURN_OFF) or []
         if isinstance(lights, str):
             lights = [lights]
@@ -338,42 +373,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Hourly ops snapshot skipped: %s", err)
 
-    def _schedule_consumer_learn(self, entity_id: str, baseline_w: float) -> None:
-        """After integration turns a consumer on, sample house meter delta (async)."""
-        self.hass.async_create_task(
-            self._async_consumer_learn_sample(entity_id, baseline_w)
-        )
-
-    async def _async_consumer_learn_sample(
-        self, consumer_entity_id: str, baseline_w: float
-    ) -> None:
-        house = self._entity_ids.get("house")
-        if not house:
-            return
-        current_config = {**self.entry.data, **(self.entry.options or {})}
-        fp = consumer_learn_fingerprint(current_config)
-        await self.consumer_learner.async_ensure_loaded(fp)
-        if self.consumer_learner.is_learned(consumer_entity_id):
-            return
-        moment = dt_util.utcnow()
-        after_w = await async_wait_house_power_after_turn_on(self.hass, house, moment)
-        if after_w is None:
-            return
-        delta = after_w - baseline_w
-        await self.consumer_learner.async_record_delta_w(consumer_entity_id, delta, fp)
-        if self.data is not None:
-            learned = self.consumer_learner.get_learned_kw()
-            pending = self.consumer_learner.get_pending_counts()
-            pending_kw = self.consumer_learner.get_pending_samples_kw()
-            self.async_set_updated_data(
-                {
-                    **self.data,
-                    "consumer_learned_kw": learned,
-                    "consumer_learned_power_kw": round(sum(learned.values()), 3),
-                    "consumer_learn_pending_samples": pending,
-                    "consumer_learn_pending_kw": pending_kw,
-                }
-            )
+    def _schedule_consumer_learn(self, entity_id: str) -> None:
+        """No-op hook kept for load-manager compatibility."""
+        _LOGGER.debug("Consumer learn scheduling hook called for %s", entity_id)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch sensors, forecast, update model, run decision, apply load manager."""
@@ -389,6 +391,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.model.solar_production_kw = solar_w / 1000.0
             self.model.house_consumption_kw = house_w / 1000.0
             current_config = {**self.entry.data, **(self.entry.options or {})}
+            consumers_cfg = _normalize_consumers(current_config.get(CONF_CONSUMERS))
 
             await self.battery_peak_learner.async_ensure_loaded(current_config)
             self.battery_peak_learner.record_sample(self.model.battery_power_kw)
@@ -415,17 +418,54 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.baseline_profile_learner.async_ensure_loaded(current_config)
 
             sample_local = dt_util.now()
-            consumer_entity_ids = _normalize_consumer_entity_ids(
-                current_config.get(CONF_CONSUMER_SWITCHES)
-            )
+            consumer_entity_ids = [
+                str(c.get(CONF_CONSUMER_SWITCH_ENTITY_ID))
+                for c in consumers_cfg
+                if c.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
+            ]
+            consumer_power_w: dict[str, float | None] = {}
+            consumer_has_sensor: dict[str, bool] = {}
+            actual_on_map: dict[str, bool | None] = {}
+            for c in consumers_cfg:
+                switch_eid = c.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
+                if not isinstance(switch_eid, str):
+                    continue
+                sensor_eid = c.get(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID)
+                consumer_has_sensor[switch_eid] = isinstance(sensor_eid, str) and bool(sensor_eid)
+                p_w: float | None = None
+                if isinstance(sensor_eid, str) and sensor_eid:
+                    p_w = _float_state(self.hass, sensor_eid)
+                    consumer_power_w[switch_eid] = p_w
+                    actual_on_map[switch_eid] = p_w >= CONSUMER_ACTIVE_POWER_THRESHOLD_W
+                else:
+                    consumer_power_w[switch_eid] = None
+                    actual_on_map[switch_eid] = None
+                st = self.hass.states.get(switch_eid)
+                expected_on = st is not None and st.state == "on"
+                if isinstance(sensor_eid, str) and sensor_eid:
+                    await self.consumer_learner.async_record_power_tick(
+                        switch_eid,
+                        p_w,
+                        expected_on=expected_on,
+                        now_local=sample_local,
+                        dt_seconds=float(UPDATE_INTERVAL),
+                        fingerprint=fp_learn,
+                    )
             learned_kw = self.consumer_learner.get_learned_kw()
             baseline_sampled = False
-            if not unlearned_consumer_on(self.hass, consumer_entity_ids, learned_kw):
+            if not unlearned_consumer_on(
+                self.hass,
+                consumer_entity_ids,
+                learned_kw,
+                has_power_sensor=consumer_has_sensor,
+                actual_on_map=actual_on_map,
+            ):
                 res_kw = residual_house_kw(
                     self.hass,
                     self.model.house_consumption_kw,
                     consumer_entity_ids,
                     learned_kw,
+                    actual_on_map=actual_on_map,
                 )
                 baseline_sampled = self.baseline_profile_learner.record_sample_if_allowed(
                     res_kw, sample_local
@@ -679,9 +719,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if budget_updated:
                     self._locked_consumer_budget_kw = effective_budget_kw
                 learned_map = self.consumer_learner.get_learned_kw()
-                consumer_list = _normalize_consumer_entity_ids(
-                    current_config.get(CONF_CONSUMER_SWITCHES)
-                )
+                consumer_list = consumer_entity_ids
                 learned_target = select_learned_consumers(
                     consumer_list,
                     learned_map,
@@ -749,7 +787,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     {"reason_code": "discharge_max"},
                 )
                 consumer_list = _normalize_consumer_entity_ids(
-                    current_config.get(CONF_CONSUMER_SWITCHES)
+                    [c.get(CONF_CONSUMER_SWITCH_ENTITY_ID) for c in consumers_cfg]
                 )
                 await self.load_manager.discharge_over_limit_turn_off_one(
                     consumer_list,
@@ -767,14 +805,32 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 recommended_entity_ids = list(self._recommended_to_turn_off_entity_ids)
 
             # Count consumers (use current config; normalize list for EntitySelector dict format)
-            consumer_entity_ids = _normalize_consumer_entity_ids(
-                current_config.get(CONF_CONSUMER_SWITCHES)
-            )
-            consumers_on_count = 0
+            expected_on_count = 0
+            actual_on_count = 0
+            unknown_actual_count = 0
+            consumers_details: dict[str, Any] = {}
+            total_actual_power_w = 0.0
             for eid in consumer_entity_ids:
                 state = self.hass.states.get(eid)
-                if state and state.state == "on":
-                    consumers_on_count += 1
+                expected_on = bool(state and state.state == "on")
+                if expected_on:
+                    expected_on_count += 1
+                p_w = consumer_power_w.get(eid)
+                actual = actual_on_map.get(eid)
+                if actual is True:
+                    actual_on_count += 1
+                if actual is None:
+                    unknown_actual_count += 1
+                if p_w is not None:
+                    total_actual_power_w += max(0.0, float(p_w))
+                metrics = self.consumer_learner.get_metrics().get(eid, {})
+                consumers_details[eid] = {
+                    "expected_on": expected_on,
+                    "actual_on": actual,
+                    "power_w": round(float(p_w), 3) if p_w is not None else None,
+                    "energy_today_kwh": metrics.get("energy_per_hour_latest_kwh"),
+                    "has_power_sensor": bool(consumer_has_sensor.get(eid)),
+                }
             consumers_total = len(consumer_entity_ids)
 
             # 7. Expose for sensors (forecast already capped by inverter in fetch_and_compute)
@@ -955,12 +1011,18 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "battery_horizon_hourly": battery_horizon_hourly,
                 "battery_horizon_to_full_edge_iso": battery_horizon_to_full_edge_iso,
                 "battery_horizon_to_very_low_edge_iso": battery_horizon_to_very_low_edge_iso,
-                "consumers_on_count": consumers_on_count,
+                "consumers_on_count": expected_on_count,
                 "consumers_total": consumers_total,
+                "consumer_expected_on_count": expected_on_count,
+                "consumer_actual_on_count": actual_on_count,
+                "consumer_unknown_actual_count": unknown_actual_count,
+                "consumer_total_actual_power_w": round(total_actual_power_w, 3),
+                "consumer_power_status_details": consumers_details,
                 "consumer_learned_kw": self.consumer_learner.get_learned_kw(),
                 "consumer_learned_power_kw": round(
                     sum(self.consumer_learner.get_learned_kw().values()), 3
                 ),
+                "consumer_learned_metrics": self.consumer_learner.get_metrics(),
                 "consumer_learn_pending_samples": self.consumer_learner.get_pending_counts(),
                 "consumer_learn_pending_kw": self.consumer_learner.get_pending_samples_kw(),
                 "consumer_budget_raw_kw": round(raw_budget_kw, 3)

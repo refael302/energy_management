@@ -23,10 +23,26 @@ from .consumer_learn_cache import consumer_learn_fingerprint
 _LOGGER = logging.getLogger(__name__)
 
 
-def unlearned_consumer_on(hass: HomeAssistant, consumer_ids: list[str], learned_kw: dict[str, float]) -> bool:
+def unlearned_consumer_on(
+    hass: HomeAssistant,
+    consumer_ids: list[str],
+    learned_kw: dict[str, float],
+    *,
+    has_power_sensor: dict[str, bool] | None = None,
+    actual_on_map: dict[str, bool | None] | None = None,
+) -> bool:
     """True if some configured consumer is on and not yet learned (must skip baseline sample)."""
     for eid in consumer_ids:
         if eid in learned_kw:
+            continue
+        if has_power_sensor and not has_power_sensor.get(eid, False):
+            st = hass.states.get(eid)
+            if st is not None and st.state == "on":
+                return True
+            continue
+        if actual_on_map is not None:
+            if actual_on_map.get(eid) is True:
+                return True
             continue
         st = hass.states.get(eid)
         if st is not None and st.state == "on":
@@ -39,12 +55,18 @@ def residual_house_kw(
     house_kw: float,
     consumer_ids: list[str],
     learned_kw: dict[str, float],
+    *,
+    actual_on_map: dict[str, bool | None] | None = None,
 ) -> float:
     """House kW minus sum of learned kW for consumers that are on."""
     r = house_kw
     for eid in consumer_ids:
         kw = learned_kw.get(eid)
         if kw is None:
+            continue
+        if actual_on_map is not None:
+            if actual_on_map.get(eid) is True:
+                r -= kw
             continue
         st = hass.states.get(eid)
         if st is not None and st.state == "on":

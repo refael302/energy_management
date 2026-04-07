@@ -14,6 +14,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
+    CONF_CONSUMERS,
     DOMAIN,
     HOURLY_SNAPSHOT_INTERVAL_SEC,
     NAME,
@@ -116,9 +117,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Config upgrades through v8 (strip legacy discharge limit keys; v7 = battery kW peaks)."""
+    """Config upgrades through v9 (v8 strips legacy discharge limit keys)."""
     current = entry.version
-    if current >= 8:
+    if current >= 9:
         return True
 
     data = {**entry.data}
@@ -203,6 +204,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         options.pop(_LEGACY_DISCHARGE_LIMIT_DEADBAND_PERCENT, None)
         current = 8
 
+    if current < 9:
+        current = 9
+
     hass.config_entries.async_update_entry(
         entry,
         data=data,
@@ -214,6 +218,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Energy Manager from a config entry."""
+    merged = {**entry.data, **(entry.options or {})}
+    if not isinstance(merged.get(CONF_CONSUMERS), list) or not merged.get(CONF_CONSUMERS):
+        _LOGGER.error(
+            "Energy Manager requires reconfigure: missing consumers mapping with power sensors."
+        )
+        return False
     if not isinstance(hass.data.get(DOMAIN), dict):
         hass.data[DOMAIN] = {}
     # Single device for this config entry (avoid duplicate "refael302" vs "Energy Manager")

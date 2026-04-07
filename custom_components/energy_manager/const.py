@@ -141,6 +141,9 @@ CONF_BATTERY_POWER_SENSOR = "battery_power_sensor"
 CONF_SOLAR_PRODUCTION_SENSOR = "solar_production_sensor"
 CONF_HOUSE_CONSUMPTION_SENSOR = "house_consumption_sensor"
 CONF_CONSUMER_SWITCHES = "consumer_switches"
+CONF_CONSUMERS = "consumers"
+CONF_CONSUMER_SWITCH_ENTITY_ID = "switch_entity_id"
+CONF_CONSUMER_POWER_SENSOR_ENTITY_ID = "power_sensor_entity_id"
 CONF_BATTERY_CAPACITY = "battery_capacity"
 CONF_LATITUDE = "latitude"
 CONF_LONGITUDE = "longitude"
@@ -192,3 +195,6 @@ NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE = 2.0
 NIGHT_BRIDGE_FORECAST_PV_THRESHOLD_KW = 0.05
 # Solar sensor (kW) must be below this while sun is below horizon for "dark" guard
 NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW = 0.05
+
+# Consumer telemetry
+CONSUMER_ACTIVE_POWER_THRESHOLD_W = 10.0

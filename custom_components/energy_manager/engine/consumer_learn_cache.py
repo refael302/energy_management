@@ -10,34 +10,52 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from ..const import CONF_CONSUMER_SWITCHES, CONF_HOUSE_CONSUMPTION_SENSOR, DOMAIN
+from ..const import (
+    CONF_CONSUMERS,
+    CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
+    CONF_CONSUMER_SWITCH_ENTITY_ID,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 CONSUMER_LEARN_DISK_VERSION = 1
 
 
-def _normalize_consumer_entity_ids(raw: Any) -> list[str]:
+def _normalize_consumers(raw: Any) -> list[dict[str, str]]:
     if not raw:
         return []
     if isinstance(raw, str):
         return [raw]
-    out: list[str] = []
+    out: list[dict[str, str]] = []
     for item in raw:
         if isinstance(item, str):
-            out.append(item)
+            out.append(
+                {
+                    CONF_CONSUMER_SWITCH_ENTITY_ID: item,
+                    CONF_CONSUMER_POWER_SENSOR_ENTITY_ID: "",
+                }
+            )
         elif isinstance(item, dict):
-            eid = item.get("entity_id") or item.get("id")
-            if isinstance(eid, str):
-                out.append(eid)
+            switch_eid = item.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
+            sensor_eid = item.get(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID) or ""
+            if isinstance(switch_eid, str):
+                out.append(
+                    {
+                        CONF_CONSUMER_SWITCH_ENTITY_ID: switch_eid,
+                        CONF_CONSUMER_POWER_SENSOR_ENTITY_ID: str(sensor_eid),
+                    }
+                )
     return out
 
 
 def consumer_learn_fingerprint(config: dict[str, Any]) -> str:
-    """Invalidate learned power when consumer entities or house consumption sensor change."""
-    consumers = sorted(_normalize_consumer_entity_ids(config.get(CONF_CONSUMER_SWITCHES)))
-    house = str(config.get(CONF_HOUSE_CONSUMPTION_SENSOR) or "")
-    raw = json.dumps({"consumers": consumers, "house": house}, sort_keys=True).encode()
+    """Invalidate learned power when consumer switch/sensor mapping changes."""
+    consumers = sorted(
+        _normalize_consumers(config.get(CONF_CONSUMERS)),
+        key=lambda x: x.get(CONF_CONSUMER_SWITCH_ENTITY_ID, ""),
+    )
+    raw = json.dumps({"consumers": consumers}, sort_keys=True).encode()
     return hashlib.sha256(raw).hexdigest()[:24]
 
 
