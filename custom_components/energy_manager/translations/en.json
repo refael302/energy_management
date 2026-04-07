@@ -118,6 +118,16 @@
             "battery_horizon_verbose_attributes": "When enabled, Battery Runtime/Time To Full also expose edge timestamp, target SOC, and hourly projection attributes."
           }
         },
+        "consumer_power_sensor": {
+          "title": "Consumer power sensor mapping",
+          "description": "Consumer {consumer_index}/{consumer_total}: {consumer_entity_id}. Select an optional dedicated power sensor for this consumer, or leave empty to keep fallback behavior.",
+          "data": {
+            "power_sensor_entity_id": "Power sensor (optional)"
+          },
+          "data_description": {
+            "power_sensor_entity_id": "Dedicated power sensor in W for this consumer."
+          }
+        },
         "strings": {
           "title": "PV strings (panels) – installation angle, capacity",
           "description": "Configure 2 PV strings for solar forecast. For each string: installed capacity (kW), installation angle – tilt (°), azimuth (°).",

@@ -114,6 +114,16 @@
             "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off)."
           }
         },
+        "consumer_power_sensor": {
+          "title": "Consumer power sensor mapping",
+          "description": "Consumer {consumer_index}/{consumer_total}: {consumer_entity_id}. Select an optional dedicated power sensor for this consumer, or leave empty to keep fallback behavior.",
+          "data": {
+            "power_sensor_entity_id": "Power sensor (optional)"
+          },
+          "data_description": {
+            "power_sensor_entity_id": "Dedicated power sensor in W for this consumer."
+          }
+        },
         "strings": {
           "title": "PV strings (panels) – installation angle, capacity",
           "description": "Configure 2 PV strings for solar forecast. For each string: installed capacity (kW), installation angle – tilt (°), azimuth (°).",
