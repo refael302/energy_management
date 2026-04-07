@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -72,7 +73,7 @@ from .const import (
     EMERGENCY_RESERVE_PLANNING_PERCENT,
     FORECAST_STRATEGY_CACHE_MINUTES,
     INTEGRATION_LOG_ENABLED,
-    CONSUMER_ACTIVE_POWER_THRESHOLD_W,
+    CONSUMER_ACTIVE_POWER_THRESHOLD_KW,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     UPDATE_INTERVAL,
@@ -103,6 +104,25 @@ def _float_state(hass: HomeAssistant, entity_id: str) -> float:
         return float(state.state)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _numeric_sensor_power_kw(hass: HomeAssistant, entity_id: str) -> float:
+    """Parse a sensor state as power in kW using unit_of_measurement when present."""
+    state = hass.states.get(entity_id)
+    if state is None or state.state in ("unknown", "unavailable", ""):
+        return 0.0
+    try:
+        val = float(state.state)
+    except (TypeError, ValueError):
+        return 0.0
+    uom = str(state.attributes.get("unit_of_measurement") or "").strip().lower()
+    if uom in ("kw", "kilowatt", "kilowatts") or uom == str(UnitOfPower.KILO_WATT).lower():
+        return max(0.0, val)
+    if uom in ("mw", "megawatt", "megawatts"):
+        return max(0.0, val * 1000.0)
+    if uom in ("w", "watt", "watts", str(UnitOfPower.WATT).lower()) or not uom:
+        return max(0.0, val / 1000.0)
+    return max(0.0, val / 1000.0)
 
 
 def _effective_battery_max_kw(manual_kw: float, learned_kw: float) -> float:
@@ -423,7 +443,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for c in consumers_cfg
                 if c.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
             ]
-            consumer_power_w: dict[str, float | None] = {}
+            consumer_power_kw: dict[str, float | None] = {}
             consumer_has_sensor: dict[str, bool] = {}
             actual_on_map: dict[str, bool | None] = {}
             for c in consumers_cfg:
@@ -432,20 +452,20 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     continue
                 sensor_eid = c.get(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID)
                 consumer_has_sensor[switch_eid] = isinstance(sensor_eid, str) and bool(sensor_eid)
-                p_w: float | None = None
+                p_kw: float | None = None
                 if isinstance(sensor_eid, str) and sensor_eid:
-                    p_w = _float_state(self.hass, sensor_eid)
-                    consumer_power_w[switch_eid] = p_w
-                    actual_on_map[switch_eid] = p_w >= CONSUMER_ACTIVE_POWER_THRESHOLD_W
+                    p_kw = _numeric_sensor_power_kw(self.hass, sensor_eid)
+                    consumer_power_kw[switch_eid] = p_kw
+                    actual_on_map[switch_eid] = p_kw >= CONSUMER_ACTIVE_POWER_THRESHOLD_KW
                 else:
-                    consumer_power_w[switch_eid] = None
+                    consumer_power_kw[switch_eid] = None
                     actual_on_map[switch_eid] = None
                 st = self.hass.states.get(switch_eid)
                 expected_on = st is not None and st.state == "on"
                 if isinstance(sensor_eid, str) and sensor_eid:
                     await self.consumer_learner.async_record_power_tick(
                         switch_eid,
-                        p_w,
+                        p_kw,
                         expected_on=expected_on,
                         now_local=sample_local,
                         dt_seconds=float(UPDATE_INTERVAL),
@@ -809,25 +829,25 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             actual_on_count = 0
             unknown_actual_count = 0
             consumers_details: dict[str, Any] = {}
-            total_actual_power_w = 0.0
+            total_actual_power_kw = 0.0
             for eid in consumer_entity_ids:
                 state = self.hass.states.get(eid)
                 expected_on = bool(state and state.state == "on")
                 if expected_on:
                     expected_on_count += 1
-                p_w = consumer_power_w.get(eid)
+                p_kw = consumer_power_kw.get(eid)
                 actual = actual_on_map.get(eid)
                 if actual is True:
                     actual_on_count += 1
                 if actual is None:
                     unknown_actual_count += 1
-                if p_w is not None:
-                    total_actual_power_w += max(0.0, float(p_w))
+                if p_kw is not None:
+                    total_actual_power_kw += max(0.0, float(p_kw))
                 metrics = self.consumer_learner.get_metrics().get(eid, {})
                 consumers_details[eid] = {
                     "expected_on": expected_on,
                     "actual_on": actual,
-                    "power_w": round(float(p_w), 3) if p_w is not None else None,
+                    "power_kw": round(float(p_kw), 4) if p_kw is not None else None,
                     "energy_today_kwh": metrics.get("energy_per_hour_latest_kwh"),
                     "has_power_sensor": bool(consumer_has_sensor.get(eid)),
                 }
@@ -1016,7 +1036,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "consumer_expected_on_count": expected_on_count,
                 "consumer_actual_on_count": actual_on_count,
                 "consumer_unknown_actual_count": unknown_actual_count,
-                "consumer_total_actual_power_w": round(total_actual_power_w, 3),
+                "consumer_total_actual_power_kw": round(total_actual_power_kw, 4),
                 "consumer_power_status_details": consumers_details,
                 "consumer_learned_kw": self.consumer_learner.get_learned_kw(),
                 "consumer_learned_power_kw": round(

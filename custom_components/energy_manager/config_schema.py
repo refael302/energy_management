@@ -50,6 +50,17 @@ def sensor_selector() -> selector.Selector:
     )
 
 
+class OptionalConsumerPowerEntitySelector(selector.EntitySelector):
+    """Entity picker for an optional sensor; blank submission is valid (None)."""
+
+    def __call__(self, data: Any) -> str | None:
+        if data is None:
+            return None
+        if isinstance(data, str) and not data.strip():
+            return None
+        return super().__call__(data)
+
+
 def battery_sensor_selector() -> selector.Selector:
     return selector.EntitySelector(
         selector.EntityFilterSelectorConfig(domain=["sensor"])
@@ -135,14 +146,15 @@ def main_params_schema_minimal(
     )
 
 
-def consumer_power_sensor_schema(default_sensor: str = "") -> vol.Schema:
+def consumer_power_sensor_schema() -> vol.Schema:
     """Per-consumer optional power sensor step."""
     return vol.Schema(
         {
             vol.Optional(
-                CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
-                default=default_sensor,
-            ): sensor_selector(),
+                CONF_CONSUMER_POWER_SENSOR_ENTITY_ID
+            ): OptionalConsumerPowerEntitySelector(
+                selector.EntityFilterSelectorConfig(domain=["sensor"])
+            ),
         }
     )
 

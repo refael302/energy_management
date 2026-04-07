@@ -1,5 +1,7 @@
 # Local helper scripts (Windows)
 *.bat
+!commit.bat
+!push_to_github.bat
 *.cmd
 
 # Python

@@ -12,13 +12,31 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from ..const import (
-    CONSUMER_ACTIVE_POWER_THRESHOLD_W,
-)
+from ..const import CONSUMER_ACTIVE_POWER_THRESHOLD_KW
 from ..integration_log import async_log_event
 from .consumer_learn_cache import create_consumer_learn_store
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _load_max_power_kw_from_stored(m: dict[str, Any]) -> float:
+    """Restore peak power in kW; legacy field max_power_w stored watts from older builds."""
+    raw_kw = m.get("max_power_kw")
+    if raw_kw is not None:
+        try:
+            return max(0.0, float(raw_kw))
+        except (TypeError, ValueError):
+            pass
+    raw_w = m.get("max_power_w")
+    if raw_w is None:
+        return 0.0
+    try:
+        v = max(0.0, float(raw_w))
+    except (TypeError, ValueError):
+        return 0.0
+    if v > 100:
+        return v / 1000.0
+    return v
 
 
 @dataclass
@@ -50,10 +68,13 @@ class ConsumerLearnRuntime:
                 if not isinstance(eid, str) or not isinstance(m, dict):
                     continue
                 try:
+                    max_kw = _load_max_power_kw_from_stored(m)
                     self.metrics[eid] = {
-                        "max_power_w": float(m.get("max_power_w") or 0.0),
+                        "max_power_kw": max_kw,
                         "energy_per_hour_latest_kwh": float(m.get("energy_per_hour_latest_kwh") or 0.0),
-                        "energy_per_hour_active_avg_kwh": float(m.get("energy_per_hour_active_avg_kwh") or 0.0),
+                        "energy_per_hour_active_avg_kwh": float(
+                            m.get("energy_per_hour_active_avg_kwh") or 0.0
+                        ),
                     }
                 except (TypeError, ValueError):
                     continue
@@ -129,7 +150,7 @@ class ConsumerLearner:
         return self._runtime.metrics.setdefault(
             entity_id,
             {
-                "max_power_w": 0.0,
+                "max_power_kw": 0.0,
                 "energy_per_hour_latest_kwh": 0.0,
                 "energy_per_hour_active_avg_kwh": 0.0,
             },
@@ -161,13 +182,13 @@ class ConsumerLearner:
     async def async_record_power_tick(
         self,
         consumer_entity_id: str,
-        power_w: float | None,
+        power_kw: float | None,
         expected_on: bool,
         now_local: datetime,
         dt_seconds: float,
         fingerprint: str,
     ) -> None:
-        """Record one update tick for a consumer with dedicated power sensor."""
+        """Record one update tick for a consumer with dedicated power sensor (power in kW)."""
         async with self._lock:
             if fingerprint != self._runtime.fingerprint:
                 return
@@ -179,16 +200,16 @@ class ConsumerLearner:
                 changed = self._finalize_hour() or changed
                 self._runtime.hour_key = hour_key
             metric = self._ensure_metric(consumer_entity_id)
-            p = max(0.0, float(power_w or 0.0))
-            if p > float(metric.get("max_power_w", 0.0)):
-                metric["max_power_w"] = round(p, 3)
+            p = max(0.0, float(power_kw or 0.0))
+            if p > float(metric.get("max_power_kw", 0.0)):
+                metric["max_power_kw"] = round(p, 3)
                 changed = True
             dt_h = max(0.0, float(dt_seconds)) / 3600.0
             if expected_on:
-                self._runtime.expected_kwh_sum[consumer_entity_id] += (p / 1000.0) * dt_h
+                self._runtime.expected_kwh_sum[consumer_entity_id] += p * dt_h
                 self._runtime.expected_seconds[consumer_entity_id] += max(0.0, float(dt_seconds))
-            if p >= CONSUMER_ACTIVE_POWER_THRESHOLD_W:
-                self._runtime.active_kwh_sum[consumer_entity_id] += (p / 1000.0) * dt_h
+            if p >= CONSUMER_ACTIVE_POWER_THRESHOLD_KW:
+                self._runtime.active_kwh_sum[consumer_entity_id] += p * dt_h
                 self._runtime.active_seconds[consumer_entity_id] += max(0.0, float(dt_seconds))
             if changed:
                 _LOGGER.debug("Consumer sensor learn updated for %s", consumer_entity_id)
@@ -201,7 +222,7 @@ class ConsumerLearner:
                     f"Updated metrics for {consumer_entity_id}",
                     {
                         "entity_id": consumer_entity_id,
-                        "max_power_w": str(metric["max_power_w"]),
+                        "max_power_kw": str(metric["max_power_kw"]),
                     },
                 )
                 await self._store.async_save(self._persist_dict())

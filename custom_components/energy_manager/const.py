@@ -196,5 +196,5 @@ NIGHT_BRIDGE_FORECAST_PV_THRESHOLD_KW = 0.05
 # Solar sensor (kW) must be below this while sun is below horizon for "dark" guard
 NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW = 0.05
 
-# Consumer telemetry
-CONSUMER_ACTIVE_POWER_THRESHOLD_W = 10.0
+# Consumer telemetry (internal power is kW; ~10 W on threshold)
+CONSUMER_ACTIVE_POWER_THRESHOLD_KW = 0.01

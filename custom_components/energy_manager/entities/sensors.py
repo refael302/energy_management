@@ -590,21 +590,22 @@ class EnergyManagerConsumerPowerStatusSensor(EnergyManagerSensorBase):
         super().__init__(
             coordinator,
             entry,
-            "consumer_total_actual_power_w",
+            "consumer_total_actual_power_kw",
             "Consumer Power Status",
             icon="mdi:flash-outline",
             device_class=SensorDeviceClass.POWER,
             state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfPower.WATT,
+            unit=UnitOfPower.KILO_WATT,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
+        self._attr_unique_id = f"{entry.entry_id}_consumer_total_actual_power"
 
     @callback
     def _handle_coordinator_update(self) -> None:
         data = self.coordinator.data
         if data is not None:
             total = int(data.get("consumers_total", 0) or 0)
-            self._attr_native_value = data.get("consumer_total_actual_power_w", 0.0)
+            self._attr_native_value = data.get("consumer_total_actual_power_kw", 0.0)
             known = max(0, total - int(data.get("consumer_unknown_actual_count", 0) or 0))
             self._attr_extra_state_attributes = {
                 "expected_on_count": data.get("consumer_expected_on_count", 0),

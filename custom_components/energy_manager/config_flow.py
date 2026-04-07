@@ -116,7 +116,7 @@ class EnergyManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_consumer_power_sensor()
         return self.async_show_form(
             step_id="consumer_power_sensor",
-            data_schema=consumer_power_sensor_schema(""),
+            data_schema=consumer_power_sensor_schema(),
             description_placeholders={
                 "consumer_index": str(self._consumer_idx + 1),
                 "consumer_total": str(len(self._consumer_switches)),
@@ -236,7 +236,7 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             return await self.async_step_consumer_power_sensor()
         return self.async_show_form(
             step_id="consumer_power_sensor",
-            data_schema=consumer_power_sensor_schema(""),
+            data_schema=consumer_power_sensor_schema(),
             description_placeholders={
                 "consumer_index": str(self._consumer_idx + 1),
                 "consumer_total": str(len(self._consumer_switches)),
