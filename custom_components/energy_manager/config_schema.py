@@ -22,6 +22,7 @@ from .const import (
     CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
     CONF_INVERTER_SIZE_KW,
+    CONF_BATTERY_HORIZON_VERBOSE_ATTRIBUTES,
     CONF_LIGHTS_TO_TURN_OFF,
     CONF_RECOMMENDED_TO_TURN_OFF,
     CONF_LATITUDE,
@@ -163,6 +164,10 @@ def main_params_schema_advanced(base: dict[str, Any]) -> vol.Schema:
                 CONF_RECOMMENDED_TO_TURN_OFF,
                 default=list_or_empty(base.get(CONF_RECOMMENDED_TO_TURN_OFF)),
             ): super_saving_entity_selector(),
+            vol.Optional(
+                CONF_BATTERY_HORIZON_VERBOSE_ATTRIBUTES,
+                default=bool(base.get(CONF_BATTERY_HORIZON_VERBOSE_ATTRIBUTES, False)),
+            ): bool,
         }
     )
 

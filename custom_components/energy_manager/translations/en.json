@@ -30,7 +30,8 @@
           "max_battery_charge_power_kw": "Max charge power (manual, kW)",
           "inverter_size_kw": "Inverter AC limit (kW, 0 = off)",
           "lights_to_turn_off": "Devices to turn off in super-saving (optional)",
-          "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
+          "recommended_to_turn_off": "Recommended to turn off when battery low (optional)",
+          "battery_horizon_verbose_attributes": "Expose verbose battery horizon attributes (diagnostic)"
         },
         "data_description": {
           "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
@@ -38,7 +39,8 @@
           "max_battery_charge_power_kw": "Optional. Cap for max charge power in kW (0 = use learned peak from battery power).",
           "inverter_size_kw": "Optional AC output limit in kW for clipping checks. Use 0 to disable.",
           "lights_to_turn_off": "Optional. Devices (lights, switches, fans, etc.) to turn off automatically in super energy saving mode (e.g. when battery very low).",
-          "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off)."
+          "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off).",
+          "battery_horizon_verbose_attributes": "When enabled, Battery Runtime/Time To Full also expose edge timestamp, target SOC, and hourly projection attributes."
         }
       },
       "strings": {
@@ -93,7 +95,8 @@
             "max_battery_charge_power_kw": "Max charge power (manual, kW)",
             "inverter_size_kw": "Inverter AC limit (kW, 0 = off)",
             "lights_to_turn_off": "Devices to turn off in super-saving (optional)",
-            "recommended_to_turn_off": "Recommended to turn off when battery low (optional)"
+            "recommended_to_turn_off": "Recommended to turn off when battery low (optional)",
+            "battery_horizon_verbose_attributes": "Expose verbose battery horizon attributes (diagnostic)"
           },
           "data_description": {
             "forecast_pr": "Performance ratio applied to the solar forecast (0–1 typical). Example: 0.85",
@@ -101,7 +104,8 @@
             "max_battery_charge_power_kw": "Optional. Cap for max charge power in kW (0 = use learned peak from battery power).",
             "inverter_size_kw": "Optional AC output limit in kW for clipping checks. Use 0 to disable.",
             "lights_to_turn_off": "Optional. Devices (lights, switches, fans, etc.) to turn off automatically in super energy saving mode (e.g. when battery very low).",
-            "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off)."
+            "recommended_to_turn_off": "Optional. Intermediate devices: when battery is low and daily forecast is short, the integration recommends turning these off (sensor exposes the list; no automatic turn-off).",
+            "battery_horizon_verbose_attributes": "When enabled, Battery Runtime/Time To Full also expose edge timestamp, target SOC, and hourly projection attributes."
           }
         },
         "strings": {

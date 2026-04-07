@@ -22,6 +22,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from ..const import (
     BASELINE_PROFILE_BOOTSTRAP_KW,
     BASELINE_PROFILE_WINDOW_DAYS,
+    CONF_BATTERY_HORIZON_VERBOSE_ATTRIBUTES,
     BATTERY_POWER_STATE_OFF,
     BATTERY_POWER_STATE_OPTIONS,
     BATTERY_SOC_VERY_LOW_PERCENT,
@@ -631,13 +632,24 @@ class EnergyManagerBatteryRuntimeSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data is not None:
             hrs = data.get("battery_runtime_hours")
-            self._attr_extra_state_attributes = {
+            attrs = {
                 "hhmm": data.get("battery_runtime_hhmm", "99:59"),
-                "edge_time_iso": data.get("battery_horizon_to_very_low_edge_iso"),
                 "method": data.get("battery_horizon_method", "instantaneous"),
-                "target_soc_percent": BATTERY_SOC_VERY_LOW_PERCENT,
-                "hourly_projection": data.get("battery_horizon_hourly") or [],
             }
+            verbose = bool(
+                (self._entry.options or {}).get(
+                    CONF_BATTERY_HORIZON_VERBOSE_ATTRIBUTES, False
+                )
+            )
+            if verbose:
+                attrs.update(
+                    {
+                        "edge_time_iso": data.get("battery_horizon_to_very_low_edge_iso"),
+                        "target_soc_percent": BATTERY_SOC_VERY_LOW_PERCENT,
+                        "hourly_projection": data.get("battery_horizon_hourly") or [],
+                    }
+                )
+            self._attr_extra_state_attributes = attrs
             if hrs is None:
                 self._attr_native_value = None
                 self._attr_available = False
@@ -778,13 +790,24 @@ class EnergyManagerBatteryTimeToFullSensor(EnergyManagerSensorBase):
         data = self.coordinator.data
         if data is not None:
             hrs = data.get("battery_time_to_full_hours")
-            self._attr_extra_state_attributes = {
+            attrs = {
                 "hhmm": data.get("battery_time_to_full_hhmm", "99:59"),
-                "edge_time_iso": data.get("battery_horizon_to_full_edge_iso"),
                 "method": data.get("battery_horizon_method", "instantaneous"),
-                "target_soc_percent": EOD_BATTERY_TARGET_PLANNING_PERCENT,
-                "hourly_projection": data.get("battery_horizon_hourly") or [],
             }
+            verbose = bool(
+                (self._entry.options or {}).get(
+                    CONF_BATTERY_HORIZON_VERBOSE_ATTRIBUTES, False
+                )
+            )
+            if verbose:
+                attrs.update(
+                    {
+                        "edge_time_iso": data.get("battery_horizon_to_full_edge_iso"),
+                        "target_soc_percent": EOD_BATTERY_TARGET_PLANNING_PERCENT,
+                        "hourly_projection": data.get("battery_horizon_hourly") or [],
+                    }
+                )
+            self._attr_extra_state_attributes = attrs
             if hrs is None:
                 self._attr_native_value = None
                 self._attr_available = False

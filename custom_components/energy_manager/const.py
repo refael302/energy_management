@@ -159,6 +159,7 @@ CONF_LIGHTS_TO_TURN_OFF = "lights_to_turn_off"
 CONF_RECOMMENDED_TO_TURN_OFF = "recommended_to_turn_off"
 CONF_INVERTER_SIZE_KW = "inverter_size_kw"
 CONF_FORECAST_PR = "forecast_pr"
+CONF_BATTERY_HORIZON_VERBOSE_ATTRIBUTES = "battery_horizon_verbose_attributes"
 
 # Defaults (from YAML initial values)
 DEFAULT_LATITUDE = 32.08
