@@ -5,6 +5,7 @@ Energy Manager sensors – expose mode, forecast_remaining, battery_reserve_stat
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -18,6 +19,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from ..const import (
     BASELINE_PROFILE_BOOTSTRAP_KW,
@@ -682,11 +684,14 @@ class EnergyManagerBaselineForecastSensor(EnergyManagerSensorBase):
             unit=UnitOfPower.KILO_WATT,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
+        self._last_baseline_publish_hour: datetime | None = None
 
     @callback
     def _handle_coordinator_update(self) -> None:
         data = self.coordinator.data
         if data is not None:
+            now = dt_util.now()
+            hour_start = now.replace(minute=0, second=0, microsecond=0)
             self._attr_native_value = data.get("baseline_forecast_kw", BASELINE_PROFILE_BOOTSTRAP_KW)
             hourly = data.get("baseline_hourly_forecast_kw") or []
             hour_map = {str(h): hourly[h] for h in range(min(24, len(hourly)))}
@@ -697,7 +702,14 @@ class EnergyManagerBaselineForecastSensor(EnergyManagerSensorBase):
                 "window_days": BASELINE_PROFILE_WINDOW_DAYS,
                 "sample_recorded_last_update": data.get("baseline_sample_recorded"),
             }
-        self.async_write_ha_state()
+            if (
+                self._last_baseline_publish_hour is None
+                or hour_start != self._last_baseline_publish_hour
+            ):
+                self._last_baseline_publish_hour = hour_start
+                self.async_write_ha_state()
+        else:
+            self.async_write_ha_state()
 
 
 class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
