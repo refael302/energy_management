@@ -420,7 +420,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             manual_c = float(current_config.get(CONF_MAX_BATTERY_CHARGE_POWER_KW) or 0)
             learned_d = self.battery_peak_learner.peak_discharge_kw
             learned_c = self.battery_peak_learner.peak_charge_kw
-            # Peaks are positive kW magnitudes; align auto discharge cap with charge envelope.
+            # Peaks are positive kW magnitudes. Auto discharge uses the larger of learned
+            # discharge/charge peaks (symmetric inverter hint), capped by charge_effective
+            # (manual charge ceiling when set).
             charge_effective = _effective_battery_max_kw(manual_c, learned_c)
             self.model.max_battery_charge_kw = charge_effective
             if manual_d > 0:
@@ -428,9 +430,10 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     manual_d, learned_d
                 )
             else:
+                symmetric_kw = max(float(learned_d), float(learned_c))
                 self.model.max_battery_discharge_kw = max(
                     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
-                    min(float(learned_d), float(charge_effective)),
+                    min(symmetric_kw, float(charge_effective)),
                 )
 
             fp_learn = consumer_learn_fingerprint(current_config)
