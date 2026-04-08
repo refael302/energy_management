@@ -98,11 +98,14 @@ BATTERY_HIGH = "high"
 BATTERY_FULL = "full"
 # SOC % below which status is BATTERY_VERY_LOW (also base for emergency planning reserve)
 BATTERY_SOC_VERY_LOW_PERCENT = 15
-# Planning emergency reserve (needed_energy_today, night bridge) = very_low_threshold + this (not user-config)
+# Planning emergency reserve offset above very-low threshold (not user-config).
 EMERGENCY_RESERVE_OFFSET_ABOVE_VERY_LOW_PERCENT = 5
 EMERGENCY_RESERVE_PLANNING_PERCENT = float(
     BATTERY_SOC_VERY_LOW_PERCENT + EMERGENCY_RESERVE_OFFSET_ABOVE_VERY_LOW_PERCENT
 )
+# Morning planning floor target (% SOC). For now, keep same value as legacy emergency reserve
+# planning percent for behavior compatibility, but use this name in new planning logic.
+MORNING_TARGET_PLANNING_PERCENT = EMERGENCY_RESERVE_PLANNING_PERCENT
 # Planning target for end of local day (% SOC). Matches EnergyModel battery_status "full" (SOC >= 95).
 EOD_BATTERY_TARGET_PLANNING_PERCENT = 95.0
 

@@ -73,15 +73,26 @@ def recommend_battery_strategy(model: EnergyModel) -> tuple[str, str]:
     if not getattr(model, "forecast_available", True):
         return recommend_battery_strategy_no_forecast(model)
 
-    daily_margin = model.daily_margin_kwh
+    evening_margin = model.evening_margin_kwh
+    morning_margin = model.morning_floor_margin_kwh
+    in_night_window = bool(getattr(model, "sun_below_horizon", False)) and (
+        float(getattr(model, "hours_until_first_pv", 0.0)) > 0.0
+    )
     consumption_next_hour = model.house_consumption_kw
     pv_next_hour = model.forecast_next_hour_kwh
 
-    if daily_margin < 0:
+    if evening_margin < 0:
         return (
             STRATEGY_FULL,
-            f"FULL – EOD target not reachable (daily_margin={daily_margin} kWh)",
+            f"FULL – evening full target not reachable (margin={evening_margin} kWh)",
         )
+    if in_night_window and (not model.can_refill_tomorrow_to_full or morning_margin < 0):
+        why = (
+            "tomorrow refill not safe"
+            if not model.can_refill_tomorrow_to_full
+            else f"morning floor margin={morning_margin} kWh"
+        )
+        return (STRATEGY_FULL, f"FULL – hold night reserve ({why})")
     if pv_next_hour < consumption_next_hour and not getattr(
         model, "night_bridge_relaxed", False
     ):
@@ -89,19 +100,19 @@ def recommend_battery_strategy(model: EnergyModel) -> tuple[str, str]:
             STRATEGY_FULL,
             f"FULL – no PV for next hour (need {consumption_next_hour} kWh)",
         )
-    if daily_margin <= MARGIN_HIGH_THRESHOLD:
+    if evening_margin <= MARGIN_HIGH_THRESHOLD:
         return (
             STRATEGY_HIGH,
-            f"HIGH – small daily buffer ({daily_margin} kWh)",
+            f"HIGH – small evening buffer ({evening_margin} kWh)",
         )
-    if MARGIN_HIGH_THRESHOLD < daily_margin <= MARGIN_MEDIUM_MAX:
+    if MARGIN_HIGH_THRESHOLD < evening_margin <= MARGIN_MEDIUM_MAX:
         return (
             STRATEGY_MEDIUM,
-            f"MEDIUM – medium daily buffer ({daily_margin} kWh)",
+            f"MEDIUM – medium evening buffer ({evening_margin} kWh)",
         )
     return (
         STRATEGY_LOW,
-        f"LOW – large daily buffer ({daily_margin} kWh)",
+        f"LOW – large evening buffer ({evening_margin} kWh)",
     )
 
 
@@ -174,7 +185,14 @@ class DecisionEngine:
         # "low" SOC or "below strategy level" — only very_low still triggers shutdown.
         forecast_headroom_ok = bool(
             getattr(model, "forecast_available", True)
-        ) and model.daily_margin_kwh >= 0.0
+        ) and model.evening_margin_kwh >= 0.0
+        night_drain_ok = bool(
+            getattr(model, "can_drain_to_morning_floor", False)
+            and getattr(model, "can_refill_tomorrow_to_full", False)
+        )
+        forecast_or_night_ok = forecast_headroom_ok and (
+            not bool(getattr(model, "sun_below_horizon", False)) or night_drain_ok
+        )
 
         # 1. Max charging for 5 min → wasting
         if charging_state == "max" and self._charge_state_max_duration_minutes >= 5:
@@ -207,7 +225,7 @@ class DecisionEngine:
         if (
             battery_status == "low"
             and charging_state != "max"
-            and not forecast_headroom_ok
+            and not forecast_or_night_ok
         ):
             return DecisionResult(
                 strategy_recommendation=strat,
@@ -226,12 +244,12 @@ class DecisionEngine:
             )
 
         # 6. Default: below recommendation → saving, or normal if forecast headroom OK
-        if forecast_headroom_ok:
+        if forecast_or_night_ok:
             return DecisionResult(
                 strategy_recommendation=strat,
                 strategy_reason=strategy_reason,
                 system_mode=SYSTEM_MODE_NORMAL,
-                mode_reason="Below recommendation (forecast headroom OK)",
+                mode_reason="Below recommendation (forecast/night headroom OK)",
             )
         return DecisionResult(
             strategy_recommendation=strat,

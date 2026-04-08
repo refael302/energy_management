@@ -21,7 +21,7 @@ from ..const import (
     DISCHARGE_DEADBAND_FRACTION_OF_MAX,
     DISCHARGE_HEADROOM_FRACTION,
     EOD_BATTERY_TARGET_PLANNING_PERCENT,
-    EMERGENCY_RESERVE_PLANNING_PERCENT,
+    MORNING_TARGET_PLANNING_PERCENT,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
     NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW,
@@ -42,7 +42,7 @@ class EnergyModel:
     # Config (from entry)
     battery_capacity_kwh: float = 20.0
     eod_battery_target_percent: float = EOD_BATTERY_TARGET_PLANNING_PERCENT
-    emergency_reserve_percent: float = EMERGENCY_RESERVE_PLANNING_PERCENT
+    morning_target_percent: float = MORNING_TARGET_PLANNING_PERCENT
     safety_forecast_factor_percent: float = float(DEFAULT_SAFETY_FORECAST_FACTOR)
     # Effective max |power| (kW) for discharge / charge; set by coordinator from learn + optional manual
     max_battery_discharge_kw: float = MIN_EFFECTIVE_MAX_BATTERY_POWER_KW
@@ -72,6 +72,16 @@ class EnergyModel:
     needed_energy_today_kwh: float = 0.0
     pv_remaining_today_safe_kwh: float = 0.0
     daily_margin_kwh: float = 0.0
+    baseline_to_sunset_kwh: float = 0.0
+    needed_to_evening_full_kwh: float = 0.0
+    pv_to_evening_safe_kwh: float = 0.0
+    evening_margin_kwh: float = 0.0
+    baseline_to_first_pv_kwh: float = 0.0
+    morning_target_kwh: float = 0.0
+    needed_to_morning_floor_kwh: float = 0.0
+    morning_floor_margin_kwh: float = 0.0
+    can_drain_to_morning_floor: bool = False
+    can_refill_tomorrow_to_full: bool = False
     night_bridge_relaxed: bool = False
     night_bridge_tomorrow_ok: bool = False
     night_bridge_energy_need_kwh: float = 0.0
@@ -145,42 +155,70 @@ class EnergyModel:
             self.battery_power_state = BATTERY_POWER_STATE_OFF
 
     def _consumption_and_headroom(self, now_local: datetime | None) -> None:
-        # Baseline integral until local calendar midnight (distinct from hours_until_eod / sunset).
+        # Baseline integral aligned to solar window end (sunset), not calendar midnight.
         if now_local is not None and len(self.baseline_hourly_kw) == 24:
-            next_midnight = now_local.replace(
-                hour=0, minute=0, second=0, microsecond=0
-            ) + timedelta(days=1)
-            self.consumption_till_eod_kwh = round(
-                kwh_over_clock_interval(
-                    self.baseline_hourly_kw, now_local, next_midnight
+            self.baseline_to_sunset_kwh = round(
+                kwh_forward_hours(
+                    self.baseline_hourly_kw,
+                    now_local,
+                    max(0.0, float(self.hours_until_eod)),
+                ),
+                2,
+            )
+            self.baseline_to_first_pv_kwh = round(
+                kwh_forward_hours(
+                    self.baseline_hourly_kw,
+                    now_local,
+                    max(0.0, float(self.hours_until_first_pv)),
                 ),
                 2,
             )
         else:
-            self.consumption_till_eod_kwh = 0.0
+            self.baseline_to_sunset_kwh = 0.0
+            self.baseline_to_first_pv_kwh = 0.0
+        self.consumption_till_eod_kwh = self.baseline_to_sunset_kwh
         diff = self.eod_battery_target_percent - self.battery_soc
         self.battery_charge_headroom_kwh = round(
             max(0, diff / 100 * self.battery_capacity_kwh), 2
         )
-        self.emergency_reserve_kwh = round(
-            self.battery_capacity_kwh * self.emergency_reserve_percent / 100, 2
+        self.morning_target_kwh = round(
+            self.battery_capacity_kwh * self.morning_target_percent / 100.0, 2
         )
-        self.needed_energy_today_kwh = round(
-            self.consumption_till_eod_kwh
-            + self.battery_charge_headroom_kwh
-            + self.emergency_reserve_kwh,
+        self.emergency_reserve_kwh = self.morning_target_kwh
+        self.needed_to_evening_full_kwh = round(
+            self.baseline_to_sunset_kwh + self.battery_charge_headroom_kwh + self.morning_target_kwh,
             2,
         )
+        self.needed_to_morning_floor_kwh = round(
+            self.baseline_to_first_pv_kwh + self.morning_target_kwh,
+            2,
+        )
+        self.needed_energy_today_kwh = self.needed_to_evening_full_kwh
         if self.forecast_available:
-            self.pv_remaining_today_safe_kwh = round(
+            self.pv_to_evening_safe_kwh = round(
                 self.forecast_today_remaining_kwh * self.safety_forecast_factor_percent / 100, 2
             )
-            self.daily_margin_kwh = round(
-                self.pv_remaining_today_safe_kwh - self.needed_energy_today_kwh, 2
+            self.evening_margin_kwh = round(
+                self.pv_to_evening_safe_kwh - self.needed_to_evening_full_kwh, 2
             )
+            current_stored_kwh = round(
+                max(0.0, self.battery_soc / 100.0 * self.battery_capacity_kwh),
+                2,
+            )
+            self.morning_floor_margin_kwh = round(
+                current_stored_kwh - self.needed_to_morning_floor_kwh,
+                2,
+            )
+            self.can_drain_to_morning_floor = self.morning_floor_margin_kwh >= 0.0
+            self.daily_margin_kwh = self.evening_margin_kwh
+            self.pv_remaining_today_safe_kwh = self.pv_to_evening_safe_kwh
         else:
-            self.pv_remaining_today_safe_kwh = 0.0
-            self.daily_margin_kwh = -1.0  # conservative: assume no PV headroom
+            self.pv_to_evening_safe_kwh = 0.0
+            self.evening_margin_kwh = -1.0  # conservative: assume no PV headroom
+            self.morning_floor_margin_kwh = -1.0
+            self.can_drain_to_morning_floor = False
+            self.daily_margin_kwh = self.evening_margin_kwh
+            self.pv_remaining_today_safe_kwh = self.pv_to_evening_safe_kwh
 
     def _night_bridge(self, now_local: datetime | None) -> None:
         """Relax next-hour PV check near sunrise when battery can last until forecast PV and tomorrow looks safe."""
@@ -197,7 +235,7 @@ class EnergyModel:
         charge_from_floor_kwh = round(
             max(
                 0.0,
-                (self.eod_battery_target_percent - self.emergency_reserve_percent)
+                (self.eod_battery_target_percent - self.morning_target_percent)
                 / 100.0
                 * self.battery_capacity_kwh,
             ),
@@ -223,13 +261,14 @@ class EnergyModel:
         else:
             tomorrow_load_kwh = 0.0
             self.night_bridge_energy_need_kwh = 0.0
-        self.night_bridge_tomorrow_ok = pv_tomorrow_safe >= (
+        self.can_refill_tomorrow_to_full = pv_tomorrow_safe >= (
             charge_from_floor_kwh + tomorrow_load_kwh
         )
+        self.night_bridge_tomorrow_ok = self.can_refill_tomorrow_to_full
         self.night_bridge_usable_kwh = round(
             max(
                 0.0,
-                (self.battery_soc - self.emergency_reserve_percent)
+                (self.battery_soc - self.morning_target_percent)
                 / 100.0
                 * self.battery_capacity_kwh,
             ),
@@ -244,9 +283,9 @@ class EnergyModel:
         self.night_bridge_relaxed = (
             window
             and dark
-            and self.night_bridge_tomorrow_ok
-            and self.daily_margin_kwh >= 0.0
-            and self.night_bridge_usable_kwh >= self.night_bridge_energy_need_kwh
+            and self.can_refill_tomorrow_to_full
+            and self.evening_margin_kwh >= 0.0
+            and self.can_drain_to_morning_floor
         )
 
     battery_strategy_recommendation: str = "full"

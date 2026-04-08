@@ -125,8 +125,26 @@ def build_hourly_snapshot_lines(
     lines.append(
         "[Margins] "
         f"daily_margin_kWh={_fmt_num(d.get('daily_margin_kwh'))} "
-        f"needed_today_kWh={_fmt_num(d.get('needed_energy_today_kwh'))} "
-        f"pv_safe_kWh={_fmt_num(d.get('pv_remaining_today_safe_kwh'))}"
+        f"evening_margin_kWh={_fmt_num(d.get('evening_margin_kwh'))} "
+        f"morning_margin_kWh={_fmt_num(d.get('morning_floor_margin_kwh'))}"
+    )
+    lines.append(
+        "[Targets] "
+        f"evening%={_fmt_num(d.get('evening_target_percent'), 1)} "
+        f"morning%={_fmt_num(d.get('morning_target_percent'), 1)} | "
+        f"need_evening_kWh={_fmt_num(d.get('needed_to_evening_full_kwh'))} "
+        f"need_morning_kWh={_fmt_num(d.get('needed_to_morning_floor_kwh'))}"
+    )
+    lines.append(
+        "[Headroom checks] "
+        f"pv_evening_safe_kWh={_fmt_num(d.get('pv_to_evening_safe_kwh'))} "
+        f"drain_ok={d.get('can_drain_to_morning_floor')} "
+        f"refill_ok={d.get('can_refill_tomorrow_to_full')}"
+    )
+    lines.append(
+        "[Baseline windows] "
+        f"to_sunset_kWh={_fmt_num(d.get('baseline_to_sunset_kwh'))} "
+        f"to_first_pv_kWh={_fmt_num(d.get('baseline_to_first_pv_kwh'))}"
     )
     lines.append(
         "[Night bridge] "
