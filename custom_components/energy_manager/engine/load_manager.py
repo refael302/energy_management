@@ -60,7 +60,7 @@ class LoadManager:
     - wasting: match switch states to learned_target + optional unlearned learning path.
     - normal: turn off one consumer per user delay_minutes (LIFO, integration-managed list).
     - saving: turn off all consumer switches (and optional lights when super_saving).
-    discharge_over_limit: turn off one consumer (prefer highest learned power if known).
+    discharge_over_limit: turn off one on-consumer if any; log when none to turn off.
     """
 
     def __init__(
@@ -456,6 +456,12 @@ class LoadManager:
             if (st := self.hass.states.get(eid)) and st.state == "on"
         ]
         if not on_list:
+            await self._log_action(
+                "INFO",
+                "discharge_over_limit_no_action",
+                "Discharge at limit: no configured consumer was on; nothing was turned off",
+                {"reason_code": "discharge_over_limit_no_targets"},
+            )
             return
         order_i = {e: i for i, e in enumerate(consumers)}
         on_list.sort(key=lambda e: order_i.get(e, 999), reverse=True)

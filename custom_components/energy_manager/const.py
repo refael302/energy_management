@@ -198,3 +198,20 @@ NIGHT_BRIDGE_SOLAR_SENSOR_THRESHOLD_KW = 0.05
 
 # Consumer telemetry (internal power is kW; ~10 W on threshold)
 CONSUMER_ACTIVE_POWER_THRESHOLD_KW = 0.01
+
+# Ops log taxonomy (must match integration_log._VALID_*)
+OPS_LOG_LEVELS: tuple[str, ...] = ("INFO", "WARN", "ERROR")
+OPS_LOG_CATEGORIES: tuple[str, ...] = ("MODE", "ACTION", "FORECAST", "LEARN", "SYSTEM")
+
+# Telegram (optional): outbound ops-log mirror + inbound commands (Bot API direct)
+CONF_TELEGRAM_ENABLED = "telegram_enabled"
+CONF_TELEGRAM_BOT_TOKEN = "telegram_bot_token"
+CONF_TELEGRAM_CHAT_IDS = "telegram_chat_ids"
+CONF_TELEGRAM_OUT_CATEGORIES = "telegram_out_categories"
+CONF_TELEGRAM_OUT_LEVELS = "telegram_out_levels"
+CONF_TELEGRAM_EVENTS_DENYLIST = "telegram_events_denylist"
+CONF_TELEGRAM_MIN_INTERVAL_SEC = "telegram_min_interval_sec"
+CONF_TELEGRAM_COMMANDS_ENABLED = "telegram_commands_enabled"
+DEFAULT_TELEGRAM_MIN_INTERVAL_SEC = 0.0
+TELEGRAM_MESSAGE_MAX_LEN = 4000
+TELEGRAM_POLL_IDLE_SEC = 1.0

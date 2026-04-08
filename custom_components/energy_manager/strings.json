@@ -75,6 +75,14 @@
     "options": {
       "step": {
         "init": {
+          "title": "Energy Manager options",
+          "description": "Choose what to configure.",
+          "menu_options": {
+            "main": "Sensors, forecast, and consumers",
+            "telegram": "Telegram notifications and bot"
+          }
+        },
+        "main": {
           "title": "Sensors and consumers",
           "description": "Update battery, solar, and house sensors, consumer switches, and battery capacity (kWh). Next: other numeric parameters, then PV strings.",
           "data": {
@@ -92,6 +100,30 @@
             "house_consumption_sensor": "Sensor for total house consumption in W. Example: sensor.house_power",
             "consumer_switches": "Switches or input booleans for heavy consumers (boiler, AC, pool, etc.). The order is the priority: first = turned on first when there is surplus, last = turned off first when saving. You can also add a group that contains these entities.",
             "battery_capacity": "Battery capacity in kWh. Example: 20"
+          }
+        },
+        "telegram": {
+          "title": "Telegram (Bot API)",
+          "description": "Send ops-log alerts to Telegram (direct API, not notify). Leave bot token empty to keep the current token. Enable bot commands only for chat IDs you list.",
+          "data": {
+            "telegram_enabled": "Enable Telegram notifications",
+            "telegram_bot_token": "Bot token",
+            "telegram_chat_ids": "Chat IDs (comma-separated)",
+            "telegram_out_categories": "Categories to send",
+            "telegram_out_levels": "Levels to send",
+            "telegram_events_denylist": "Events to exclude (comma-separated, optional)",
+            "telegram_min_interval_sec": "Min seconds between identical alerts (0 = off)",
+            "telegram_commands_enabled": "Enable bot commands (long polling)"
+          },
+          "data_description": {
+            "telegram_enabled": "When off, no messages are sent and command polling idles.",
+            "telegram_bot_token": "From @BotFather. Leave blank when saving to keep the existing token.",
+            "telegram_chat_ids": "Numeric chat id(s), comma-separated. Same list is used for inbound command allowlist.",
+            "telegram_out_categories": "MODE, ACTION, FORECAST, LEARN, SYSTEM — same taxonomy as the ops log.",
+            "telegram_out_levels": "INFO, WARN, ERROR.",
+            "telegram_events_denylist": "Snake_case event names to never forward, e.g. consumer_turned_on, open_meteo_timeout",
+            "telegram_min_interval_sec": "Per-entry dedupe window for identical alerts (same as sensor ring fingerprint).",
+            "telegram_commands_enabled": "Uses getUpdates in the background; only listed chat IDs can use /status, /clear_alerts, etc."
           }
         },
         "advanced": {

@@ -15,6 +15,7 @@ from .config_schema import (
     main_params_schema_minimal,
     strings_schema_from_config,
     strings_schema_install_defaults,
+    telegram_options_schema,
 )
 from .const import (
     CONF_CONSUMERS,
@@ -29,6 +30,7 @@ from .const import (
     CONF_STRINGS,
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
+    CONF_TELEGRAM_BOT_TOKEN,
     DEFAULT_AZIMUTH,
     DEFAULT_SYSTEM_SIZE_KW,
     DEFAULT_TILT,
@@ -198,7 +200,19 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Step 1: sensors and consumer switches."""
+        """Choose: full integration settings or Telegram only."""
+        merged = self._merged_config()
+        if not self._has_new_consumers_config(merged):
+            return self.async_abort(reason="reconfigure_required")
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["main", "telegram"],
+        )
+
+    async def async_step_main(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Sensors, consumers, and battery capacity (options flow)."""
         merged = self._merged_config()
         if not self._has_new_consumers_config(merged):
             return self.async_abort(reason="reconfigure_required")
@@ -210,15 +224,37 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             self._consumer_idx = 0
             return await self.async_step_consumer_power_sensor()
         return self.async_show_form(
-            step_id="init",
+            step_id="main",
             data_schema=main_params_schema_minimal(merged),
+        )
+
+    async def async_step_telegram(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Telegram Bot API: outbound ops-log + optional commands."""
+        merged = self._merged_config()
+        if user_input is not None:
+            data = dict(user_input)
+            tok = str(data.get(CONF_TELEGRAM_BOT_TOKEN, "")).strip()
+            if tok:
+                data[CONF_TELEGRAM_BOT_TOKEN] = tok
+            else:
+                data.pop(CONF_TELEGRAM_BOT_TOKEN, None)
+                prev = merged.get(CONF_TELEGRAM_BOT_TOKEN)
+                if prev:
+                    data[CONF_TELEGRAM_BOT_TOKEN] = prev
+            new_cfg = {**merged, **data}
+            return self.async_create_entry(data=new_cfg)
+        return self.async_show_form(
+            step_id="telegram",
+            data_schema=telegram_options_schema(merged),
         )
 
     async def async_step_consumer_power_sensor(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         if not hasattr(self, "_options_partial"):
-            return await self.async_step_init()
+            return await self.async_step_main()
         if self._consumer_idx >= len(self._consumer_switches):
             self._options_partial[CONF_CONSUMERS] = list(self._consumer_defs)
             self._options_partial.pop(CONF_CONSUMER_SWITCHES, None)
@@ -250,7 +286,7 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         """Step 2: numbers and optional entities; keep or repair lat/lon."""
         merged = self._merged_config()
         if not hasattr(self, "_options_partial"):
-            return await self.async_step_init()
+            return await self.async_step_main()
         if user_input is not None:
             user_input = dict(user_input)
             _apply_advanced_optional_entities(user_input)

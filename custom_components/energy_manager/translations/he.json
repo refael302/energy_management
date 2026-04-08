@@ -77,6 +77,14 @@
     "options": {
       "step": {
         "init": {
+          "title": "אפשרויות Energy Manager",
+          "description": "בחר מה להגדיר.",
+          "menu_options": {
+            "main": "חיישנים, תחזית וצרכנים",
+            "telegram": "התראות טלגרם ובוט"
+          }
+        },
+        "main": {
           "title": "חיישנים וצרכנים",
           "description": "עדכון חיישני סוללה, סולאר ובית, מתגי צרכנים וקיבולת סוללה (kWh). אחר כך פרמטרים מספריים נוספים ואז סטרינגים סולאריים.",
           "data": {
@@ -94,6 +102,30 @@
             "house_consumption_sensor": "חיישן צריכת בית כוללת ב־W. דוגמה: sensor.house_power",
             "consumer_switches": "מתגים או Input Boolean לצרכנים כבדים (דוד, מזגן, בריכה וכו'). הסדר = עדיפות: הראשון יודלק ראשון כשיש עודף, האחרון יכבה ראשון בחיסכון. אפשר גם לבחור קבוצה שמכילה את הישויות.",
             "battery_capacity": "קיבולת סוללה ב־kWh. דוגמה: 20"
+          }
+        },
+        "telegram": {
+          "title": "טלגרם (Bot API)",
+          "description": "שליחת לוג פעולות לטלגרם (API ישיר, לא notify). השאר את טוקן הבוט ריק כדי לשמור על הטוקן הקיים. הפעל פקודות בוט רק ל-chat IDs שמופיעים ברשימה.",
+          "data": {
+            "telegram_enabled": "הפעל התראות טלגרם",
+            "telegram_bot_token": "טוקן בוט",
+            "telegram_chat_ids": "Chat IDs (מופרדים בפסיקים)",
+            "telegram_out_categories": "קטגוריות לשליחה",
+            "telegram_out_levels": "רמות לשליחה",
+            "telegram_events_denylist": "אירועים לחסימה (מופרדים בפסיקים, אופציונלי)",
+            "telegram_min_interval_sec": "מינימום שניות בין התראות זהות (0 = כבוי)",
+            "telegram_commands_enabled": "הפעל פקודות בוט (long polling)"
+          },
+          "data_description": {
+            "telegram_enabled": "כבוי: לא נשלחות הודעות ולולאת הפקודות במצב המתנה.",
+            "telegram_bot_token": "מ־@BotFather. השאר ריק בשמירה כדי לשמור את הטוקן הקיים.",
+            "telegram_chat_ids": "מזהה צ'אט מספרי, מופרדים בפסיקים. אותה רשימה משמשת לאישור פקודות נכנסות.",
+            "telegram_out_categories": "MODE, ACTION, FORECAST, LEARN, SYSTEM — כמו בלוג הפעולות.",
+            "telegram_out_levels": "INFO, WARN, ERROR.",
+            "telegram_events_denylist": "שמות אירועים ב־snake_case שלא יישלחו, למשל consumer_turned_on, open_meteo_timeout",
+            "telegram_min_interval_sec": "חלון דה־רפ לכל התקנה בין התראות זהות (אותו fingerprint כמו בחיישן).",
+            "telegram_commands_enabled": "משתמש ב־getUpdates ברקע; רק chat IDs מהרשימה יכולים להשתמש ב־/status, /clear_alerts וכו'."
           }
         },
         "advanced": {

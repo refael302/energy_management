@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
@@ -23,6 +24,7 @@ from .const import (
 )
 from .coordinator import EnergyManagerCoordinator
 from .engine.consumer_learn_cache import consumer_learn_fingerprint
+from .telegram_bridge import telegram_poll_loop
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -270,6 +272,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             timedelta(seconds=HOURLY_SNAPSHOT_INTERVAL_SEC),
         )
     )
+    tg_stop = asyncio.Event()
+    tg_task = hass.async_create_background_task(
+        telegram_poll_loop(hass, entry.entry_id, tg_stop),
+        f"energy_manager_telegram_poll_{entry.entry_id}",
+    )
+
+    def _stop_telegram() -> None:
+        tg_stop.set()
+        tg_task.cancel()
+
+    entry.async_on_unload(_stop_telegram)
     await _async_register_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Link all entities for this config entry to this device

@@ -38,6 +38,7 @@ from .const import (
     INTEGRATION_ALERTS_DISPLAY_MAX,
     STRATEGY_MEDIUM,
     DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO,
+    DISCHARGE_HEADROOM_FRACTION,
     SYSTEM_MODE_NORMAL,
     SYSTEM_MODE_WASTING,
     CONF_BATTERY_CAPACITY,
@@ -359,6 +360,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
         self._integration_alerts.append(full)
         self.async_set_updated_data({**(self.data or {}), **self._integration_alert_data()})
+        from .telegram_bridge import schedule_ops_log_telegram
+
+        schedule_ops_log_telegram(self.hass, self.entry.entry_id, full)
 
     def clear_integration_alerts(self) -> None:
         """Clear the in-memory alert ring (e.g. after user dismisses in UI)."""
@@ -420,21 +424,18 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             manual_c = float(current_config.get(CONF_MAX_BATTERY_CHARGE_POWER_KW) or 0)
             learned_d = self.battery_peak_learner.peak_discharge_kw
             learned_c = self.battery_peak_learner.peak_charge_kw
-            # Peaks are positive kW magnitudes. Auto discharge uses the larger of learned
-            # discharge/charge peaks (symmetric inverter hint), capped by charge_effective
-            # (manual charge ceiling when set).
+            # Peaks are positive kW magnitudes. Effective discharge ceiling is the greater of
+            # (discharge from config/learned) and (charge ceiling), never the lesser.
             charge_effective = _effective_battery_max_kw(manual_c, learned_c)
             self.model.max_battery_charge_kw = charge_effective
             if manual_d > 0:
-                self.model.max_battery_discharge_kw = _effective_battery_max_kw(
-                    manual_d, learned_d
-                )
+                discharge_side = _effective_battery_max_kw(manual_d, learned_d)
             else:
-                symmetric_kw = max(float(learned_d), float(learned_c))
-                self.model.max_battery_discharge_kw = max(
-                    MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
-                    min(symmetric_kw, float(charge_effective)),
-                )
+                discharge_side = _effective_battery_max_kw(0, learned_d)
+            self.model.max_battery_discharge_kw = max(
+                MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
+                max(float(discharge_side), float(charge_effective)),
+            )
 
             fp_learn = consumer_learn_fingerprint(current_config)
             await self.consumer_learner.async_ensure_loaded(fp_learn)
@@ -795,19 +796,37 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 wasting_context=wasting_context,
             )
 
-            # 6. Discharge over limit: turn off one consumer when discharge_state -> max
+            # 6. Discharge at operational ceiling: log observed state; may turn off one consumer
             if (
                 self.model.discharge_state == "max"
                 and self._prev_discharge_state != "max"
             ):
+                m_dis = max(
+                    MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
+                    float(self.model.max_battery_discharge_kw),
+                )
+                thr_kw = round(m_dis * (1.0 - DISCHARGE_HEADROOM_FRACTION), 3)
+                dis_kw = round(max(0.0, self.model.battery_power_kw), 3)
+                prev_st = self._prev_discharge_state or "initial"
                 await async_log_event(
                     self.hass,
                     self.entry.entry_id,
-                    "WARN",
+                    "INFO",
                     "SYSTEM",
-                    "discharge_over_limit_handling",
-                    "Discharge at max; turning off one consumer",
-                    {"reason_code": "discharge_max"},
+                    "discharge_state_max_entered",
+                    (
+                        f"discharge_state is max: battery discharge {dis_kw} kW "
+                        f">= ceiling threshold {thr_kw} kW "
+                        f"(effective max discharge {round(m_dis, 3)} kW); "
+                        f"previous discharge_state={prev_st}"
+                    ),
+                    {
+                        "reason_code": "discharge_max",
+                        "battery_discharge_kw": str(dis_kw),
+                        "discharge_ceiling_kw": str(thr_kw),
+                        "max_battery_discharge_kw": str(round(m_dis, 3)),
+                        "prev_discharge_state": prev_st,
+                    },
                 )
                 consumer_list = _normalize_consumer_entity_ids(
                     [c.get(CONF_CONSUMER_SWITCH_ENTITY_ID) for c in consumers_cfg]

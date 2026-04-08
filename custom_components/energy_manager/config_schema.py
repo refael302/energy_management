@@ -33,6 +33,15 @@ from .const import (
     CONF_SOLAR_PRODUCTION_SENSOR,
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
+    CONF_TELEGRAM_BOT_TOKEN,
+    CONF_TELEGRAM_CHAT_IDS,
+    CONF_TELEGRAM_COMMANDS_ENABLED,
+    CONF_TELEGRAM_ENABLED,
+    CONF_TELEGRAM_EVENTS_DENYLIST,
+    CONF_TELEGRAM_MIN_INTERVAL_SEC,
+    CONF_TELEGRAM_OUT_CATEGORIES,
+    CONF_TELEGRAM_OUT_LEVELS,
+    DEFAULT_TELEGRAM_MIN_INTERVAL_SEC,
     DEFAULT_BATTERY_CAPACITY,
     DEFAULT_FORECAST_PR,
     DEFAULT_INVERTER_SIZE_KW,
@@ -41,6 +50,8 @@ from .const import (
     DEFAULT_SYSTEM_SIZE_KW,
     DEFAULT_TILT,
     DEFAULT_AZIMUTH,
+    OPS_LOG_CATEGORIES,
+    OPS_LOG_LEVELS,
 )
 
 
@@ -89,6 +100,8 @@ def list_or_empty(val: Any) -> list[str]:
         return []
     if isinstance(val, list):
         return val
+    if isinstance(val, tuple):
+        return list(val)
     return [val] if val else []
 
 
@@ -211,6 +224,88 @@ def strings_schema_install_defaults() -> vol.Schema:
             ): vol.Coerce(float),
             vol.Required("string_1_tilt", default=DEFAULT_TILT): vol.Coerce(float),
             vol.Required("string_1_azimuth", default=DEFAULT_AZIMUTH): vol.Coerce(float),
+        }
+    )
+
+
+def _category_options() -> list[dict[str, str]]:
+    return [{"value": c, "label": c} for c in OPS_LOG_CATEGORIES]
+
+
+def _level_options() -> list[dict[str, str]]:
+    return [{"value": c, "label": c} for c in OPS_LOG_LEVELS]
+
+
+def telegram_options_schema(merged: dict[str, Any]) -> vol.Schema:
+    """Optional Telegram: outbound ops-log filters + inbound commands."""
+    def_cats = list_or_empty(merged.get(CONF_TELEGRAM_OUT_CATEGORIES))
+    if not def_cats:
+        def_cats = list(OPS_LOG_CATEGORIES)
+    def_levels = list_or_empty(merged.get(CONF_TELEGRAM_OUT_LEVELS))
+    if not def_levels:
+        def_levels = list(OPS_LOG_LEVELS)
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_TELEGRAM_ENABLED,
+                default=bool(merged.get(CONF_TELEGRAM_ENABLED)),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_TELEGRAM_BOT_TOKEN,
+                default="",
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.PASSWORD,
+                    autocomplete="off",
+                )
+            ),
+            vol.Optional(
+                CONF_TELEGRAM_CHAT_IDS,
+                default=str(merged.get(CONF_TELEGRAM_CHAT_IDS) or ""),
+            ): selector.TextSelector(),
+            vol.Optional(
+                CONF_TELEGRAM_OUT_CATEGORIES,
+                default=def_cats,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_category_options(),
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_TELEGRAM_OUT_LEVELS,
+                default=def_levels,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_level_options(),
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_TELEGRAM_EVENTS_DENYLIST,
+                default=str(merged.get(CONF_TELEGRAM_EVENTS_DENYLIST) or ""),
+            ): selector.TextSelector(),
+            vol.Optional(
+                CONF_TELEGRAM_MIN_INTERVAL_SEC,
+                default=float(
+                    merged.get(CONF_TELEGRAM_MIN_INTERVAL_SEC)
+                    if merged.get(CONF_TELEGRAM_MIN_INTERVAL_SEC) is not None
+                    else DEFAULT_TELEGRAM_MIN_INTERVAL_SEC
+                ),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=3600,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Required(
+                CONF_TELEGRAM_COMMANDS_ENABLED,
+                default=bool(merged.get(CONF_TELEGRAM_COMMANDS_ENABLED)),
+            ): selector.BooleanSelector(),
         }
     )
 
