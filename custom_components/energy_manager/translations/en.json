@@ -1,4 +1,26 @@
 {
+  "entity": {
+    "sensor": {
+      "stats_solar_energy_today": {
+        "name": "Solar production today"
+      },
+      "stats_battery_discharge_energy_today": {
+        "name": "Battery discharge energy today"
+      },
+      "stats_house_consumption_energy_today": {
+        "name": "House consumption today"
+      },
+      "stats_forecast_pv_full_day": {
+        "name": "Forecast PV today (full day)"
+      },
+      "stats_pv_forecast_shortfall_today": {
+        "name": "PV below forecast today"
+      },
+      "stats_wasting_consumer_energy_today": {
+        "name": "Consumer energy during wasting today"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {

@@ -79,6 +79,12 @@ async def async_setup_entry(
             EnergyManagerConsumerLearnedPowerSensor(coordinator, entry),
             EnergyManagerBaselineForecastSensor(coordinator, entry),
             EnergyManagerLastAlertSensor(coordinator, entry),
+            EnergyManagerStatsSolarEnergyTodaySensor(coordinator, entry),
+            EnergyManagerStatsBatteryDischargeTodaySensor(coordinator, entry),
+            EnergyManagerStatsHouseConsumptionTodaySensor(coordinator, entry),
+            EnergyManagerStatsForecastPvFullDaySensor(coordinator, entry),
+            EnergyManagerStatsPvForecastShortfallSensor(coordinator, entry),
+            EnergyManagerStatsWastingConsumerEnergySensor(coordinator, entry),
         ]
     )
 
@@ -785,6 +791,185 @@ class EnergyManagerLastAlertSensor(EnergyManagerSensorBase):
                 "summary": rec.get("summary"),
                 "context": rec.get("context") or {},
                 "alerts": data.get(DATA_INTEGRATION_ALERTS_DISPLAY) or [],
+            }
+        self.async_write_ha_state()
+
+
+class EnergyManagerStatsSolarEnergyTodaySensor(EnergyManagerSensorBase):
+    """Integrated solar production since local midnight (kWh)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "stats_solar_energy_today_kwh",
+            "Solar production today",
+            icon="mdi:solar-power-variant",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        self._attr_translation_key = "stats_solar_energy_today"
+        self._attr_has_entity_name = True
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("stats_solar_energy_today_kwh")
+            self._attr_extra_state_attributes = {
+                "local_date": data.get("stats_energy_local_date"),
+            }
+        self.async_write_ha_state()
+
+
+class EnergyManagerStatsBatteryDischargeTodaySensor(EnergyManagerSensorBase):
+    """Integrated battery discharge (positive power) since local midnight (kWh)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "stats_battery_discharge_energy_today_kwh",
+            "Battery discharge energy today",
+            icon="mdi:battery-minus",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        self._attr_translation_key = "stats_battery_discharge_energy_today"
+        self._attr_has_entity_name = True
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("stats_battery_discharge_energy_today_kwh")
+            self._attr_extra_state_attributes = {
+                "local_date": data.get("stats_energy_local_date"),
+            }
+        self.async_write_ha_state()
+
+
+class EnergyManagerStatsHouseConsumptionTodaySensor(EnergyManagerSensorBase):
+    """Integrated house load since local midnight (kWh)."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "stats_house_consumption_energy_today_kwh",
+            "House consumption today",
+            icon="mdi:home-lightning-bolt-outline",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        self._attr_translation_key = "stats_house_consumption_energy_today"
+        self._attr_has_entity_name = True
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("stats_house_consumption_energy_today_kwh")
+            self._attr_extra_state_attributes = {
+                "local_date": data.get("stats_energy_local_date"),
+            }
+        self.async_write_ha_state()
+
+
+class EnergyManagerStatsForecastPvFullDaySensor(EnergyManagerSensorBase):
+    """Sum of today's hourly PV forecast (full calendar day, kWh); updates with forecast refresh."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "stats_forecast_pv_full_day_kwh",
+            "Forecast PV production today (full day)",
+            icon="mdi:weather-partly-cloudy",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        self._attr_translation_key = "stats_forecast_pv_full_day"
+        self._attr_has_entity_name = True
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("stats_forecast_pv_full_day_kwh")
+            self._attr_extra_state_attributes = {
+                "local_date": data.get("stats_energy_local_date"),
+            }
+        self.async_write_ha_state()
+
+
+class EnergyManagerStatsPvForecastShortfallSensor(EnergyManagerSensorBase):
+    """max(0, forecast elapsed today − actual solar today); attrs include signed delta."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "stats_pv_forecast_shortfall_today_kwh",
+            "PV energy below forecast (today)",
+            icon="mdi:chart-timeline-variant-shimmer",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        self._attr_translation_key = "stats_pv_forecast_shortfall_today"
+        self._attr_has_entity_name = True
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("stats_pv_forecast_shortfall_today_kwh")
+            self._attr_extra_state_attributes = {
+                "forecast_elapsed_today_kwh": data.get(
+                    "stats_forecast_pv_elapsed_today_kwh"
+                ),
+                "solar_actual_today_kwh": data.get("stats_solar_energy_today_kwh"),
+                "forecast_minus_actual_kwh": data.get(
+                    "stats_forecast_vs_actual_delta_kwh"
+                ),
+                "local_date": data.get("stats_energy_local_date"),
+            }
+        self.async_write_ha_state()
+
+
+class EnergyManagerStatsWastingConsumerEnergySensor(EnergyManagerSensorBase):
+    """Energy (kWh) from consumer power sensors integrated only while mode is wasting."""
+
+    def __init__(self, coordinator: EnergyManagerCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            "stats_wasting_consumer_energy_today_kwh",
+            "Consumer energy during wasting (today)",
+            icon="mdi:transmission-tower-export",
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        self._attr_translation_key = "stats_wasting_consumer_energy_today"
+        self._attr_has_entity_name = True
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        data = self.coordinator.data
+        if data:
+            self._attr_native_value = data.get("stats_wasting_consumer_energy_today_kwh")
+            self._attr_extra_state_attributes = {
+                "local_date": data.get("stats_energy_local_date"),
+                "note": (
+                    "Sum of per-consumer power sensors (kW·h) while system mode is "
+                    "wasting; map sensors in consumer config for best accuracy."
+                ),
             }
         self.async_write_ha_state()
 

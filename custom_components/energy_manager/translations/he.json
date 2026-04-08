@@ -1,4 +1,26 @@
 {
+  "entity": {
+    "sensor": {
+      "stats_solar_energy_today": {
+        "name": "ייצור סולארי היום (מצטבר)"
+      },
+      "stats_battery_discharge_energy_today": {
+        "name": "אנרגיה מפריקת סוללה היום"
+      },
+      "stats_house_consumption_energy_today": {
+        "name": "צריכת עומס (בית) היום"
+      },
+      "stats_forecast_pv_full_day": {
+        "name": "תחזית ייצור פוטנציאלי היום (יום מלא)"
+      },
+      "stats_pv_forecast_shortfall_today": {
+        "name": "אנרגיה שלא נוצלה מול תחזית (היום)"
+      },
+      "stats_wasting_consumer_energy_today": {
+        "name": "אנרגיה בצרכנים במצב בזבוז (היום)"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {

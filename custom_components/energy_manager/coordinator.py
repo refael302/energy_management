@@ -91,6 +91,11 @@ from .engine.consumer_budget import (
 )
 from .engine.load_manager import WastingContext
 from .engine.decision_engine import recommend_battery_strategy
+from .daily_energy_stats import (
+    DailyEnergyAccumulator,
+    forecast_elapsed_today_kwh,
+    forecast_full_day_kwh,
+)
 from .hourly_snapshot import build_hourly_snapshot_lines
 from .integration_log import async_log_event
 
@@ -299,6 +304,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._ops_prev_strategy: str | None = None
         self._integration_alerts: deque[dict[str, Any]] = deque(maxlen=INTEGRATION_ALERTS_MAX)
         self._integration_alert_seq: int = 0
+        self._daily_energy = DailyEnergyAccumulator(hass, entry.entry_id)
 
     @staticmethod
     def _integration_alert_fingerprint(
@@ -404,6 +410,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch sensors, forecast, update model, run decision, apply load manager."""
         try:
+            await self._daily_energy.async_ensure_loaded()
             # 1. Sensor values (power in W -> kW where needed)
             soc = _float_state(self.hass, self._entity_ids["battery_soc"] or "")
             battery_power_w = _float_state(self.hass, self._entity_ids["battery_power"] or "")
@@ -1004,6 +1011,35 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 decision.system_mode,
                 decision.strategy_recommendation,
             )
+            now_local_stats = dt_util.now()
+            self._daily_energy.accumulate(
+                now_local_stats,
+                self.model.solar_production_kw,
+                self.model.battery_power_kw,
+                self.model.house_consumption_kw,
+                decision.system_mode == SYSTEM_MODE_WASTING,
+                total_actual_power_kw,
+            )
+            await self._daily_energy.async_persist_if_dirty()
+            if forecast_available:
+                stats_fc_full_day_kwh = forecast_full_day_kwh(f_today_full_hourly)
+                stats_fc_elapsed_kwh = forecast_elapsed_today_kwh(
+                    f_today_full_hourly,
+                    int(f_current_hour_index),
+                    now_local_stats,
+                )
+            else:
+                stats_fc_full_day_kwh = None
+                stats_fc_elapsed_kwh = None
+            stats_pv_today_kwh = round(self._daily_energy.pv_kwh, 3)
+            if stats_fc_elapsed_kwh is not None:
+                stats_fc_vs_actual_delta_kwh = round(
+                    stats_fc_elapsed_kwh - stats_pv_today_kwh, 3
+                )
+                stats_pv_forecast_shortfall_kwh = max(0.0, stats_fc_vs_actual_delta_kwh)
+            else:
+                stats_fc_vs_actual_delta_kwh = None
+                stats_pv_forecast_shortfall_kwh = None
             return {
                 "model": self.model,
                 "forecast": forecast,
@@ -1098,6 +1134,21 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "baseline_estimated_daily_kwh": self.baseline_profile_learner.estimated_daily_kwh(),
                 "baseline_completed_days": self.baseline_profile_learner.completed_days_count(),
                 "baseline_sample_recorded": baseline_sampled,
+                "stats_solar_energy_today_kwh": stats_pv_today_kwh,
+                "stats_battery_discharge_energy_today_kwh": round(
+                    self._daily_energy.battery_discharge_kwh, 3
+                ),
+                "stats_house_consumption_energy_today_kwh": round(
+                    self._daily_energy.house_kwh, 3
+                ),
+                "stats_forecast_pv_full_day_kwh": stats_fc_full_day_kwh,
+                "stats_forecast_pv_elapsed_today_kwh": stats_fc_elapsed_kwh,
+                "stats_pv_forecast_shortfall_today_kwh": stats_pv_forecast_shortfall_kwh,
+                "stats_forecast_vs_actual_delta_kwh": stats_fc_vs_actual_delta_kwh,
+                "stats_wasting_consumer_energy_today_kwh": round(
+                    self._daily_energy.wasting_consumer_kwh, 3
+                ),
+                "stats_energy_local_date": self._daily_energy.day_key,
                 "battery_learned_max_discharge_kw": round(learned_d, 3),
                 "battery_learned_max_charge_kw": round(learned_c, 3),
                 "battery_effective_max_discharge_kw": round(
