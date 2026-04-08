@@ -95,8 +95,9 @@
           "string_1_azimuth": "Panel azimuth in degrees. Example: 0"
         }
       }
-    },
-    "options": {
+    }
+  },
+  "options": {
       "step": {
         "init": {
           "title": "Energy Manager options",
@@ -203,7 +204,6 @@
           }
         }
       }
-    }
   },
   "abort": {
     "reconfigure_required": "Existing setup uses legacy consumer config. Please reconfigure the integration to define consumers with optional power sensors."
