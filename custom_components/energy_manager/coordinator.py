@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -20,7 +21,7 @@ from .engine.baseline_profile_learn import (
     residual_house_kw,
     unlearned_consumer_on,
 )
-from .engine.consumer_learn import ConsumerLearner
+from .engine.consumer_learn import LEARN_SOURCE_HOUSE_DELTA, ConsumerLearner
 from .engine.battery_power_limit_learn import BatteryPowerPeakLearner
 from .engine.consumer_learn_cache import consumer_learn_fingerprint
 from .engine.forecast_cache import (
@@ -77,6 +78,8 @@ from .const import (
     CONSUMER_ACTIVE_POWER_THRESHOLD_KW,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
+    SYSTEM_MODE_EMERGENCY_SAVING,
+    SYSTEM_MODE_NORMAL_WASTING_DWELL_SEC,
     UPDATE_INTERVAL,
 )
 from .engine import DecisionEngine, EnergyModel, ForecastEngine, LoadManager
@@ -90,7 +93,7 @@ from .engine.consumer_budget import (
     trim_learned_consumers_for_very_low_horizon,
 )
 from .engine.load_manager import WastingContext
-from .engine.decision_engine import recommend_battery_strategy
+from .engine.decision_engine import DecisionResult, recommend_battery_strategy
 from .daily_energy_stats import (
     DailyEnergyAccumulator,
     forecast_elapsed_today_kwh,
@@ -302,9 +305,46 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._locked_consumer_budget_kw: float | None = None
         self._ops_prev_system_mode: str | None = None
         self._ops_prev_strategy: str | None = None
+        self._dwell_committed_mode: str | None = None
+        self._dwell_mode_changed_at: datetime | None = None
         self._integration_alerts: deque[dict[str, Any]] = deque(maxlen=INTEGRATION_ALERTS_MAX)
         self._integration_alert_seq: int = 0
         self._daily_energy = DailyEnergyAccumulator(hass, entry.entry_id)
+
+    def _apply_normal_wasting_dwell(self, decision: DecisionResult) -> DecisionResult:
+        """Hold normal/wasting stable for SYSTEM_MODE_NORMAL_WASTING_DWELL_SEC (0 = off)."""
+        if SYSTEM_MODE_NORMAL_WASTING_DWELL_SEC <= 0:
+            return decision
+        now = dt_util.utcnow()
+        committed = self._dwell_committed_mode
+        want = decision.system_mode
+        if committed is None:
+            self._dwell_committed_mode = want
+            self._dwell_mode_changed_at = now
+            return decision
+        if want == committed:
+            return decision
+        if want == SYSTEM_MODE_EMERGENCY_SAVING or committed == SYSTEM_MODE_EMERGENCY_SAVING:
+            self._dwell_committed_mode = want
+            self._dwell_mode_changed_at = now
+            return decision
+        if not ({want, committed} <= {SYSTEM_MODE_NORMAL, SYSTEM_MODE_WASTING}):
+            self._dwell_committed_mode = want
+            self._dwell_mode_changed_at = now
+            return decision
+        if self._dwell_mode_changed_at is None:
+            self._dwell_mode_changed_at = now
+            return decision
+        elapsed = (now - self._dwell_mode_changed_at).total_seconds()
+        if elapsed < SYSTEM_MODE_NORMAL_WASTING_DWELL_SEC:
+            return replace(
+                decision,
+                system_mode=committed,
+                mode_reason=f"{decision.mode_reason} [dwell:{committed}]",
+            )
+        self._dwell_committed_mode = want
+        self._dwell_mode_changed_at = now
+        return decision
 
     @staticmethod
     def _integration_alert_fingerprint(
@@ -471,17 +511,30 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 else:
                     consumer_power_kw[switch_eid] = None
                     actual_on_map[switch_eid] = None
+
+            await self.consumer_learner.async_process_house_delta_pending(
+                self.model.house_consumption_kw,
+                fp_learn,
+            )
+
+            for c in consumers_cfg:
+                switch_eid = c.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
+                if not isinstance(switch_eid, str):
+                    continue
+                sensor_eid = c.get(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID)
+                if not (isinstance(sensor_eid, str) and sensor_eid):
+                    continue
+                p_kw = consumer_power_kw.get(switch_eid)
                 st = self.hass.states.get(switch_eid)
                 expected_on = st is not None and st.state == "on"
-                if isinstance(sensor_eid, str) and sensor_eid:
-                    await self.consumer_learner.async_record_power_tick(
-                        switch_eid,
-                        p_kw,
-                        expected_on=expected_on,
-                        now_local=sample_local,
-                        dt_seconds=float(UPDATE_INTERVAL),
-                        fingerprint=fp_learn,
-                    )
+                await self.consumer_learner.async_record_power_tick(
+                    switch_eid,
+                    p_kw,
+                    expected_on=expected_on,
+                    now_local=sample_local,
+                    dt_seconds=float(UPDATE_INTERVAL),
+                    fingerprint=fp_learn,
+                )
             learned_kw = self.consumer_learner.get_learned_kw()
             baseline_sampled = False
             if not unlearned_consumer_on(
@@ -673,6 +726,10 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if self._last_strategy is not None
                 else None
             )
+            discharge_just_entered_max = (
+                self.model.discharge_state == "max"
+                and self._prev_discharge_state != "max"
+            )
             decision = self.decision_engine.decide(
                 self.model,
                 manual_mode_override=manual_mode_override,
@@ -680,7 +737,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 manual_mode=manual_mode,
                 manual_strategy=manual_strategy,
                 cached_strategy=cached_strategy,
+                discharge_just_entered_max=discharge_just_entered_max,
             )
+            decision = self._apply_normal_wasting_dwell(decision)
             self._last_decision = decision
 
             if self._ops_prev_system_mode is not None:
@@ -794,20 +853,16 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     learned_target=learned_target,
                     discharge_headroom_kw=budget_ceilings.discharge_kw,
                     marginal_battery_per_kw=marginal,
+                    unmeasurable_entity_ids=set(
+                        self.consumer_learner.get_unmeasurable()
+                    ),
                 )
 
-            await self.load_manager.apply_mode(
-                decision.system_mode,
-                super_saving=super_saving,
-                house_consumption_entity_id=self._entity_ids.get("house"),
-                wasting_context=wasting_context,
+            consumer_list_norm = _normalize_consumer_entity_ids(
+                [c.get(CONF_CONSUMER_SWITCH_ENTITY_ID) for c in consumers_cfg]
             )
 
-            # 6. Discharge at operational ceiling: log observed state; may turn off one consumer
-            if (
-                self.model.discharge_state == "max"
-                and self._prev_discharge_state != "max"
-            ):
+            if discharge_just_entered_max:
                 m_dis = max(
                     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
                     float(self.model.max_battery_discharge_kw),
@@ -835,13 +890,38 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "prev_discharge_state": prev_st,
                     },
                 )
-                consumer_list = _normalize_consumer_entity_ids(
-                    [c.get(CONF_CONSUMER_SWITCH_ENTITY_ID) for c in consumers_cfg]
-                )
+
+            if decision.force_shed_one_consumer:
                 await self.load_manager.discharge_over_limit_turn_off_one(
-                    consumer_list,
+                    consumer_list_norm,
                     learned_kw=self.consumer_learner.get_learned_kw(),
                 )
+
+            house_kw_before_load_actions = self.model.house_consumption_kw
+            await self.load_manager.apply_mode(
+                decision.system_mode,
+                super_saving=super_saving,
+                house_consumption_entity_id=self._entity_ids.get("house"),
+                wasting_context=wasting_context,
+                suppress_wasting_turn_ons=decision.suppress_wasting_turn_ons,
+            )
+            house_ent_id = self._entity_ids.get("house")
+            house_sensor_configured = isinstance(house_ent_id, str) and bool(
+                house_ent_id.strip()
+            )
+            for eid in self.load_manager.drain_integration_turn_ons():
+                await self.consumer_learner.async_schedule_house_delta_sample(
+                    eid,
+                    house_kw_before_load_actions,
+                    house_entity_id=str(house_ent_id).strip()
+                    if isinstance(house_ent_id, str)
+                    else "",
+                    has_power_sensor=consumer_has_sensor.get(eid, False),
+                    house_sensor_configured=house_sensor_configured,
+                    fingerprint=fp_learn,
+                )
+
+            # 6. Discharge state edge (for next tick); shed handled before apply_mode via policy
             self._prev_discharge_state = self.model.discharge_state
 
             # Recommendation: turn off intermediate devices when battery low and forecast short
@@ -859,6 +939,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             unknown_actual_count = 0
             consumers_details: dict[str, Any] = {}
             total_actual_power_kw = 0.0
+            learn_sources = self.consumer_learner.get_learn_source()
+            house_delta_by_eid = self.consumer_learner.get_house_delta_samples()
+            stabilizing_ids = self.consumer_learner.get_stabilizing_entity_ids()
+            unmeasurable_ids = self.consumer_learner.get_unmeasurable()
+            learned_kw_detail = self.consumer_learner.get_learned_kw()
             for eid in consumer_entity_ids:
                 state = self.hass.states.get(eid)
                 expected_on = bool(state and state.state == "on")
@@ -873,12 +958,48 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if p_kw is not None:
                     total_actual_power_kw += max(0.0, float(p_kw))
                 metrics = self.consumer_learner.get_metrics().get(eid, {})
+                src = learn_sources.get(eid)
+                hd_samples = list(house_delta_by_eid.get(eid, []))
+                stabilizing = eid in stabilizing_ids
+                unmeas = eid in unmeasurable_ids
+                learned_val = learned_kw_detail.get(eid)
+                if eid in learned_kw_detail and eid in metrics:
+                    est_kw = float(learned_val or 0.0)
+                    if src == LEARN_SOURCE_HOUSE_DELTA:
+                        learn_state = "learned_house_delta"
+                    else:
+                        learn_state = "learned_power_sensor"
+                elif unmeas:
+                    learn_state = "unmeasurable"
+                    est_kw = None
+                elif stabilizing or hd_samples:
+                    learn_state = "learning_house_delta"
+                    est_kw = (
+                        round(sum(hd_samples) / len(hd_samples), 4)
+                        if hd_samples
+                        else None
+                    )
+                else:
+                    learn_state = "unlearned"
+                    est_kw = None
+                spread_ratio: float | None = None
+                if len(hd_samples) >= 2:
+                    lo, hi = min(hd_samples), max(hd_samples)
+                    mean = sum(hd_samples) / len(hd_samples)
+                    spread_ratio = round((hi - lo) / max(mean, 0.05), 4)
                 consumers_details[eid] = {
                     "expected_on": expected_on,
                     "actual_on": actual,
                     "power_kw": round(float(p_kw), 4) if p_kw is not None else None,
                     "energy_today_kwh": metrics.get("energy_per_hour_latest_kwh"),
                     "has_power_sensor": bool(consumer_has_sensor.get(eid)),
+                    "learn_state": learn_state,
+                    "learn_source": src,
+                    "estimated_kw": est_kw,
+                    "house_delta_samples_kw": hd_samples,
+                    "house_delta_stabilizing": stabilizing,
+                    "house_delta_spread_ratio": spread_ratio,
+                    "unmeasurable": unmeas,
                 }
             consumers_total = len(consumer_entity_ids)
 
@@ -1114,6 +1235,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "consumer_learned_metrics": self.consumer_learner.get_metrics(),
                 "consumer_learn_pending_samples": self.consumer_learner.get_pending_counts(),
                 "consumer_learn_pending_kw": self.consumer_learner.get_pending_samples_kw(),
+                "consumer_learn_source": self.consumer_learner.get_learn_source(),
+                "consumer_unmeasurable_entity_ids": sorted(unmeasurable_ids),
+                "consumer_house_delta_stabilizing_entity_ids": sorted(stabilizing_ids),
                 "consumer_budget_raw_kw": round(raw_budget_kw, 3)
                 if decision.system_mode == SYSTEM_MODE_WASTING
                 else None,

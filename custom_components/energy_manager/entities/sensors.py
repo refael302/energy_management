@@ -742,6 +742,15 @@ class EnergyManagerConsumerLearnedPowerSensor(EnergyManagerSensorBase):
             self._attr_extra_state_attributes = {
                 "consumers_kw": data.get("consumer_learned_kw") or {},
                 "consumers_metrics": data.get("consumer_learned_metrics") or {},
+                "consumers_estimates_detail": data.get("consumer_power_status_details")
+                or {},
+                "learn_source": data.get("consumer_learn_source") or {},
+                "unmeasurable_entity_ids": data.get("consumer_unmeasurable_entity_ids")
+                or [],
+                "house_delta_stabilizing_entity_ids": data.get(
+                    "consumer_house_delta_stabilizing_entity_ids"
+                )
+                or [],
                 "pending_samples": data.get("consumer_learn_pending_samples") or {},
                 "pending_samples_kw": data.get("consumer_learn_pending_kw") or {},
             }

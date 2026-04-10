@@ -14,12 +14,13 @@ from ..const import (
     CONF_CONSUMERS,
     CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
     CONF_CONSUMER_SWITCH_ENTITY_ID,
+    CONF_HOUSE_CONSUMPTION_SENSOR,
     DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-CONSUMER_LEARN_DISK_VERSION = 1
+CONSUMER_LEARN_DISK_VERSION = 2
 
 
 def _normalize_consumers(raw: Any) -> list[dict[str, str]]:
@@ -50,12 +51,16 @@ def _normalize_consumers(raw: Any) -> list[dict[str, str]]:
 
 
 def consumer_learn_fingerprint(config: dict[str, Any]) -> str:
-    """Invalidate learned power when consumer switch/sensor mapping changes."""
+    """Invalidate learned power when consumer mapping or house consumption sensor changes."""
     consumers = sorted(
         _normalize_consumers(config.get(CONF_CONSUMERS)),
         key=lambda x: x.get(CONF_CONSUMER_SWITCH_ENTITY_ID, ""),
     )
-    raw = json.dumps({"consumers": consumers}, sort_keys=True).encode()
+    house = config.get(CONF_HOUSE_CONSUMPTION_SENSOR) or ""
+    raw = json.dumps(
+        {"consumers": consumers, "house_consumption_sensor": str(house)},
+        sort_keys=True,
+    ).encode()
     return hashlib.sha256(raw).hexdigest()[:24]
 
 

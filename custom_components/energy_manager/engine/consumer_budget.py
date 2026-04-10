@@ -235,6 +235,7 @@ def next_unlearned_for_sampling(
     discharge_headroom_kw: float,
     marginal_battery_per_kw: float,
     min_headroom_for_unknown_kw: float = 0.5,
+    unmeasurable_entity_ids: set[str] | None = None,
 ) -> str | None:
     """
     First (priority) consumer that is off, not learned, not already targeted for turn-on.
@@ -243,8 +244,11 @@ def next_unlearned_for_sampling(
     m = max(0.0, min(1.0, marginal_battery_per_kw))
     if m >= 0.99 and discharge_headroom_kw < min_headroom_for_unknown_kw:
         return None
+    unmeas = unmeasurable_entity_ids or set()
     for eid in consumers_ordered:
         if eid in learned_kw:
+            continue
+        if eid in unmeas:
             continue
         if eid in on_targets:
             continue

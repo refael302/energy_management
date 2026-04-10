@@ -46,6 +46,7 @@ class WastingContext:
     learned_target: set[str]
     discharge_headroom_kw: float
     marginal_battery_per_kw: float
+    unmeasurable_entity_ids: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -85,6 +86,7 @@ class LoadManager:
         self._last_turn_on_delay_sec: int = CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES * 60
         self._last_turn_off_delay_sec: int = CONSUMER_ACTION_DELAY_LEARNED_MINUTES * 60
         self._integration_turn_on_at_utc: dict[str, datetime] = {}
+        self._integration_turn_on_eids_this_apply: list[str] = []
 
     async def _log_action(
         self,
@@ -154,6 +156,13 @@ class LoadManager:
         await self._call_turn_on(entity_id)
         if was_off:
             self._integration_turn_on_at_utc[entity_id] = datetime.now(timezone.utc)
+            self._integration_turn_on_eids_this_apply.append(entity_id)
+
+    def drain_integration_turn_ons(self) -> list[str]:
+        """Entity IDs the integration turned on (off→on) during the last apply_mode call."""
+        out = list(self._integration_turn_on_eids_this_apply)
+        self._integration_turn_on_eids_this_apply.clear()
+        return out
 
     async def apply_mode(
         self,
@@ -162,23 +171,28 @@ class LoadManager:
         *,
         house_consumption_entity_id: str | None = None,
         wasting_context: WastingContext | None = None,
+        suppress_wasting_turn_ons: bool = False,
     ) -> None:
         """
         Apply actions for the given system mode.
         wasting_context: when mode is wasting, carries greedy learned_target and discharge hints.
+        suppress_wasting_turn_ons: when True, still allow wasting turn-offs but no new turn-ons.
         """
+        self._integration_turn_on_eids_this_apply.clear()
         consumers = self._consumer_entity_ids(self.consumer_entity_ids)
         if system_mode == SYSTEM_MODE_WASTING:
             if wasting_context is not None:
                 await self._apply_wasting_budget(
                     wasting_context,
                     house_consumption_entity_id,
+                    suppress_turn_ons=suppress_wasting_turn_ons,
                 )
             else:
                 await self._apply_wasting_fallback(
                     consumers,
                     house_consumption_entity_id,
                     learned_kw={},
+                    suppress_turn_ons=suppress_wasting_turn_ons,
                 )
         elif system_mode == SYSTEM_MODE_EMERGENCY_SAVING:
             await self._apply_saving(consumers, super_saving=True)
@@ -326,6 +340,8 @@ class LoadManager:
         self,
         ctx: WastingContext,
         house_consumption_entity_id: str | None,
+        *,
+        suppress_turn_ons: bool = False,
     ) -> None:
         """One turn-on or turn-off per eligible tick, prioritizing turn-off for safety."""
         learned_kw = ctx.learned_kw
@@ -361,6 +377,9 @@ class LoadManager:
             )
             return
 
+        if suppress_turn_ons:
+            return
+
         for eid in ordered:
             if eid not in learned_kw:
                 continue
@@ -391,6 +410,7 @@ class LoadManager:
             target,
             discharge_headroom_kw=ctx.discharge_headroom_kw,
             marginal_battery_per_kw=ctx.marginal_battery_per_kw,
+            unmeasurable_entity_ids=ctx.unmeasurable_entity_ids,
         )
         if candidate and not is_on(candidate):
             if self._can_turn_on_after_delay(candidate, learned_kw):
@@ -415,8 +435,12 @@ class LoadManager:
         consumers: list[str],
         house_consumption_entity_id: str | None,
         learned_kw: dict[str, float],
+        *,
+        suppress_turn_ons: bool = False,
     ) -> None:
         """Legacy one-per-delay when no wasting_context provided."""
+        if suppress_turn_ons:
+            return
         if not consumers or not self._can_turn_on_after_delay(
             consumers[0], learned_kw
         ):
