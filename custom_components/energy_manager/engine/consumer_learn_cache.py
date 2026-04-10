@@ -20,7 +20,7 @@ from ..const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-CONSUMER_LEARN_DISK_VERSION = 2
+CONSUMER_LEARN_DISK_VERSION = 1
 
 
 def _normalize_consumers(raw: Any) -> list[dict[str, str]]:
