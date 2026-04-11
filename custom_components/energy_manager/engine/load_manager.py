@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -20,6 +20,7 @@ from ..const import (
     CONSUMER_ACTION_DELAY_LEARNED_MINUTES,
     CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
     CONSUMER_MIN_ON_MINUTES,
+    DISCHARGE_SHED_COOLDOWN_SEC,
     SYSTEM_MODE_EMERGENCY_SAVING,
     SYSTEM_MODE_SAVING,
     SYSTEM_MODE_WASTING,
@@ -87,6 +88,8 @@ class LoadManager:
         self._last_turn_off_delay_sec: int = CONSUMER_ACTION_DELAY_LEARNED_MINUTES * 60
         self._integration_turn_on_at_utc: dict[str, datetime] = {}
         self._integration_turn_on_eids_this_apply: list[str] = []
+        # Anti-flap: after discharge-ceiling shed, block re-turn-on for DISCHARGE_SHED_COOLDOWN_SEC.
+        self._discharge_shed_until_utc: dict[str, datetime] = {}
 
     async def _log_action(
         self,
@@ -114,6 +117,26 @@ class LoadManager:
             for eid in entity_ids
             if eid.split(".", 1)[0] in CONSUMER_DOMAINS
         ]
+
+    def _purge_expired_discharge_shed(self, now_utc: datetime) -> None:
+        expired = [
+            eid
+            for eid, until in self._discharge_shed_until_utc.items()
+            if until <= now_utc
+        ]
+        for eid in expired:
+            del self._discharge_shed_until_utc[eid]
+
+    def _is_under_discharge_shed_cooldown(self, entity_id: str, *, now_utc: datetime) -> bool:
+        until = self._discharge_shed_until_utc.get(entity_id)
+        return until is not None and until > now_utc
+
+    def note_discharge_shed(self, entity_id: str) -> None:
+        """Call after turning a consumer off due to discharge ceiling (coordinator / tests)."""
+        now = datetime.now(timezone.utc)
+        self._discharge_shed_until_utc[entity_id] = now + timedelta(
+            seconds=max(1, int(DISCHARGE_SHED_COOLDOWN_SEC))
+        )
 
     def _delay_seconds_for_entity(
         self, entity_id: str, learned_kw: dict[str, float]
@@ -344,6 +367,8 @@ class LoadManager:
         suppress_turn_ons: bool = False,
     ) -> None:
         """One turn-on or turn-off per eligible tick, prioritizing turn-off for safety."""
+        now_utc = datetime.now(timezone.utc)
+        self._purge_expired_discharge_shed(now_utc)
         learned_kw = ctx.learned_kw
         ordered = ctx.consumers_ordered
         target = ctx.learned_target
@@ -387,6 +412,8 @@ class LoadManager:
                 continue
             if is_on(eid):
                 continue
+            if self._is_under_discharge_shed_cooldown(eid, now_utc=now_utc):
+                continue
             if not self._can_turn_on_after_delay(eid, learned_kw):
                 continue
             await self._turn_on_consumer(eid)
@@ -413,22 +440,25 @@ class LoadManager:
             unmeasurable_entity_ids=ctx.unmeasurable_entity_ids,
         )
         if candidate and not is_on(candidate):
-            if self._can_turn_on_after_delay(candidate, learned_kw):
-                await self._turn_on_consumer(candidate)
-                self._append_managed(candidate)
-                self._last_turn_on_time = datetime.now(timezone.utc)
-                self._last_turn_on_delay_sec = self._delay_seconds_for_entity(
-                    candidate, learned_kw
-                )
-                _LOGGER.debug("Wasting budget: turned on %s (learn path)", candidate)
-                await self._log_action(
-                    "INFO",
-                    "consumer_turned_on",
-                    f"Wasting: turned on {candidate} (unlearned sampling)",
-                    {"entity_id": candidate, "reason_code": "wasting_learn_path"},
-                )
-                if self._schedule_consumer_learn:
-                    self._schedule_consumer_learn(candidate)
+            if not self._is_under_discharge_shed_cooldown(candidate, now_utc=now_utc):
+                if self._can_turn_on_after_delay(candidate, learned_kw):
+                    await self._turn_on_consumer(candidate)
+                    self._append_managed(candidate)
+                    self._last_turn_on_time = datetime.now(timezone.utc)
+                    self._last_turn_on_delay_sec = self._delay_seconds_for_entity(
+                        candidate, learned_kw
+                    )
+                    _LOGGER.debug(
+                        "Wasting budget: turned on %s (learn path)", candidate
+                    )
+                    await self._log_action(
+                        "INFO",
+                        "consumer_turned_on",
+                        f"Wasting: turned on {candidate} (unlearned sampling)",
+                        {"entity_id": candidate, "reason_code": "wasting_learn_path"},
+                    )
+                    if self._schedule_consumer_learn:
+                        self._schedule_consumer_learn(candidate)
 
     async def _apply_wasting_fallback(
         self,
@@ -499,6 +529,7 @@ class LoadManager:
                 blocking=True,
             )
             self._remove_managed(entity_id)
+            self.note_discharge_shed(entity_id)
             _LOGGER.debug(
                 "Discharge over limit: turned off one consumer %s",
                 entity_id,

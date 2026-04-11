@@ -44,6 +44,15 @@ DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO = 0.15
 DISCHARGE_HEADROOM_FRACTION = 0.30
 # Hysteresis for discharge_under_limit: band below operational ceiling, as fraction of full max kW
 DISCHARGE_DEADBAND_FRACTION_OF_MAX = 0.05
+# After a discharge-ceiling shed, block re-turn-on of that consumer (anti-flap with greedy budget).
+DISCHARGE_SHED_COOLDOWN_SEC = 180
+# Extra kW slack when greedy-picking consumers vs discharge headroom (sensor / learn error).
+CONSUMER_DISCHARGE_HEADROOM_SAFETY_KW = 0.25
+
+# Pre-first-PV: prefer wasting (load) while SOC is still above morning floor, if forecast safe.
+MORNING_DRAIN_MAX_HOURS_BEFORE_FIRST_PV = 6.0
+MORNING_DRAIN_SOC_BUFFER_PERCENT = 3.0
+MORNING_DRAIN_MAX_SOLAR_KW = 0.5
 
 # Unified battery power direction + level (ENUM sensor); derived from charge_state + discharge_state
 BATTERY_POWER_STATE_OFF = "off"

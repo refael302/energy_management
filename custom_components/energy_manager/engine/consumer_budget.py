@@ -23,6 +23,7 @@ from ..const import (
     CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW,
     CONSUMER_BUDGET_MARGIN_MEDIUM_CAP_KW,
     CONSUMER_BUDGET_MARGIN_NEG_CAP_KW,
+    CONSUMER_DISCHARGE_HEADROOM_SAFETY_KW,
     DISCHARGE_HEADROOM_FRACTION,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     MARGIN_HIGH_THRESHOLD,
@@ -212,6 +213,7 @@ def select_learned_consumers(
     d_head = max(0.0, discharge_headroom_kw)
     m = max(0.0, min(1.0, marginal_battery_per_kw))
 
+    safety = max(0.0, float(CONSUMER_DISCHARGE_HEADROOM_SAFETY_KW))
     for eid in consumers_ordered:
         kw = learned_kw.get(eid)
         if kw is None or eid not in learned_kw:
@@ -219,7 +221,7 @@ def select_learned_consumers(
         if total_learned + kw - budget > 1e-6:
             continue
         load_on_battery = (total_learned + kw) * m
-        if load_on_battery - d_head > 1e-6:
+        if load_on_battery + safety - d_head > 1e-6:
             continue
         selected.add(eid)
         total_learned += kw

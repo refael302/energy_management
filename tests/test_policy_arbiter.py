@@ -155,3 +155,59 @@ def test_evaluate_emergency_discharge_only() -> None:
     assert ev.mode_override is None
     assert ev.suppress_wasting_turn_ons is True
     assert ev.force_shed_one_consumer is True
+
+
+def test_morning_pre_pv_drain_prefers_wasting_over_normal() -> None:
+    """Below strategy with forecast OK, but still above morning floor and pre-PV → wasting."""
+    m = _base_forecast_model()
+    m.battery_soc = 28.0
+    m.battery_status = "low"
+    m.morning_target_percent = 20.0
+    m.hours_until_first_pv = 2.0
+    m.solar_production_kw = 0.0
+    m.charge_state = "off"
+    out = merge_policy(
+        m,
+        strategy=STRATEGY_FULL,
+        strategy_reason="test",
+        charge_state_max_duration_minutes=0.0,
+        discharge_just_entered_max=False,
+    )
+    assert out.system_mode == SYSTEM_MODE_WASTING
+    assert "Morning drain" in out.mode_reason
+
+
+def test_morning_pre_pv_drain_skips_when_solar_already_significant() -> None:
+    m = _base_forecast_model()
+    m.battery_soc = 28.0
+    m.battery_status = "low"
+    m.morning_target_percent = 20.0
+    m.hours_until_first_pv = 2.0
+    m.solar_production_kw = 2.0
+    m.charge_state = "off"
+    out = merge_policy(
+        m,
+        strategy=STRATEGY_FULL,
+        strategy_reason="test",
+        charge_state_max_duration_minutes=0.0,
+        discharge_just_entered_max=False,
+    )
+    assert out.system_mode == SYSTEM_MODE_NORMAL
+
+
+def test_morning_pre_pv_drain_skips_when_near_morning_floor() -> None:
+    m = _base_forecast_model()
+    m.battery_soc = 22.0
+    m.battery_status = "low"
+    m.morning_target_percent = 20.0
+    m.hours_until_first_pv = 2.0
+    m.solar_production_kw = 0.0
+    m.charge_state = "off"
+    out = merge_policy(
+        m,
+        strategy=STRATEGY_FULL,
+        strategy_reason="test",
+        charge_state_max_duration_minutes=0.0,
+        discharge_just_entered_max=False,
+    )
+    assert out.system_mode == SYSTEM_MODE_NORMAL
