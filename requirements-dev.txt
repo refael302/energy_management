@@ -1,0 +1,2 @@
+# Local development and CI (Home Assistant installs runtime deps from manifest.json).
+pytest>=7.4.0

@@ -3,13 +3,19 @@
 DOMAIN = "energy_manager"
 NAME = "Energy Manager"
 
-# Operation log (TXT under config_dir/energy_manager_logs/) — not exposed in UI yet
+# Operation log: daily TXT files under config_dir/energy_manager_logs/ops_{entry_id}_YYYY-MM-DD.txt
 INTEGRATION_LOG_ENABLED = True
 INTEGRATION_LOG_SCHEMA_VERSION = 2
 INTEGRATION_LOG_MAX_BYTES = 2_000_000
 INTEGRATION_LOG_DEDUPE_WINDOW_SEC = 300.0
-# Categories that may spam (Open-Meteo, repeated system notices); ACTION never deduped inside logger
-INTEGRATION_LOG_DEDUPE_CATEGORIES = frozenset({"FORECAST", "SYSTEM"})
+# Categories throttled: identical (category,event,entity_id,reason_code) within window
+INTEGRATION_LOG_DEDUPE_CATEGORIES = frozenset(
+    {"FORECAST", "SYSTEM", "ACTION", "LEARN"}
+)
+# Daily ops files older than this many local-calendar days are deleted (0 = disable)
+INTEGRATION_LOG_RETENTION_DAYS = 14
+# Run directory cleanup at most this often per config entry (seconds)
+INTEGRATION_LOG_CLEANUP_INTERVAL_SEC = 3600.0
 INTEGRATION_LOG_SUMMARY_MAX_LEN = 200
 INTEGRATION_LOG_CONTEXT_MAX_LEN = 480
 
@@ -94,6 +100,8 @@ CONSUMER_LEARN_TIMEOUT_SEC = 120.0
 
 # Update interval for coordinator (seconds)
 UPDATE_INTERVAL = 30
+# While staying in emergency_saving, repeat bulk consumer/super-saving turn-off at most this often.
+EMERGENCY_SAVING_BULK_INTERVAL_SEC = 300
 # Forecast and strategy cache (minutes) – fetch/update every 15 min, use cache between
 FORECAST_STRATEGY_CACHE_MINUTES = 15
 

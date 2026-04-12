@@ -4,6 +4,9 @@ Wasting mode uses learned consumer budget from coordinator (greedy target set), 
 1 min between actions for learned entities and 5 min for unlearned (learning path).
 After the integration turns a consumer on, it is not turned off again until
 CONSUMER_MIN_ON_MINUTES have elapsed (saving / discharge_over_limit exempt).
+Saving mode runs bulk turn-off only on entry to saving (still only calls turn_off
+for entities that are on). Emergency saving repeats bulk at EMERGENCY_SAVING_BULK_INTERVAL_SEC
+while the mode stays active.
 """
 
 from __future__ import annotations
@@ -125,6 +128,7 @@ class LoadManager:
         self._integration_turn_on_eids_this_apply: list[str] = []
         # Anti-flap: after discharge-ceiling shed, block re-turn-on for DISCHARGE_SHED_COOLDOWN_SEC.
         self._discharge_shed_until_utc: dict[str, datetime] = {}
+        self._last_emergency_saving_bulk_utc: datetime | None = None
 
     async def _log_action(
         self,
@@ -172,6 +176,14 @@ class LoadManager:
         self._discharge_shed_until_utc[entity_id] = now + timedelta(
             seconds=max(1, int(DISCHARGE_SHED_COOLDOWN_SEC))
         )
+
+    def emergency_saving_bulk_due(self, interval_sec: int) -> bool:
+        """While already in emergency_saving: True if a bulk turn-off pass may run again."""
+        last = self._last_emergency_saving_bulk_utc
+        if last is None:
+            return True
+        elapsed = (datetime.now(timezone.utc) - last).total_seconds()
+        return elapsed >= float(interval_sec)
 
     def _delay_seconds_for_entity(
         self, entity_id: str, learned_kw: dict[str, float]
@@ -227,6 +239,7 @@ class LoadManager:
         system_mode: str,
         super_saving: bool = False,
         *,
+        apply_saving_bulk: bool = True,
         house_consumption_entity_id: str | None = None,
         wasting_context: WastingContext | None = None,
         suppress_wasting_turn_ons: bool = False,
@@ -236,9 +249,12 @@ class LoadManager:
         Apply actions for the given system mode.
         wasting_context: when mode is wasting, carries greedy learned_target and discharge hints.
         suppress_wasting_turn_ons: when True, still allow wasting turn-offs but no new turn-ons.
+        apply_saving_bulk: when False, saving/emergency_saving skip consumer/super-saving bulk (coordinator).
         decision_context: per-tick snapshot from coordinator for ACTION logs (required when logging).
         """
         self._integration_turn_on_eids_this_apply.clear()
+        if system_mode != SYSTEM_MODE_EMERGENCY_SAVING:
+            self._last_emergency_saving_bulk_utc = None
         consumers = self._consumer_entity_ids(self.consumer_entity_ids)
         dc = decision_context
         if system_mode == SYSTEM_MODE_WASTING:
@@ -258,9 +274,21 @@ class LoadManager:
                     decision_context=dc,
                 )
         elif system_mode == SYSTEM_MODE_EMERGENCY_SAVING:
-            await self._apply_saving(consumers, super_saving=True, decision_context=dc)
+            await self._apply_saving(
+                consumers,
+                super_saving=True,
+                decision_context=dc,
+                run_bulk=apply_saving_bulk,
+                record_emergency_bulk_time=True,
+            )
         elif system_mode == SYSTEM_MODE_SAVING:
-            await self._apply_saving(consumers, super_saving, decision_context=dc)
+            await self._apply_saving(
+                consumers,
+                super_saving,
+                decision_context=dc,
+                run_bulk=apply_saving_bulk,
+                record_emergency_bulk_time=False,
+            )
         else:
             await self._apply_off_once(consumers, decision_context=dc)
 
@@ -280,14 +308,18 @@ class LoadManager:
             domain, "turn_on", {"entity_id": entity_id}, blocking=True
         )
 
-    async def _call_turn_off(self, entity_ids: list[str]) -> None:
+    async def _call_turn_off(self, entity_ids: list[str]) -> list[str]:
         """Call turn_off for each entity using its domain (switch or input_boolean).
 
         Only send a turn_off when the current state is not already 'off', to avoid
         repeatedly sending identical commands (e.g. to IR-based devices that beep on
         every command even if they stay off).
+
+        Returns entity IDs for which a turn_off service call was issued (order follows
+        entity_ids).
         """
         by_domain: dict[str, list[str]] = {}
+        turned_off: list[str] = []
         for eid in entity_ids:
             domain = self._domain(eid)
             if not domain:
@@ -296,10 +328,12 @@ class LoadManager:
             if state is None or state.state == "off":
                 continue
             by_domain.setdefault(domain, []).append(eid)
+            turned_off.append(eid)
         for domain, eids in by_domain.items():
             await self.hass.services.async_call(
                 domain, "turn_off", {"entity_id": eids}, blocking=True
             )
+        return turned_off
 
     def _can_turn_off_another_normal(self) -> bool:
         """True if at least delay_minutes have passed since last turn_off (normal mode)."""
@@ -359,22 +393,29 @@ class LoadManager:
             if eid.split(".", 1)[0] in SUPER_SAVING_TURN_OFF_DOMAINS
         ]
 
-    async def _turn_off_super_saving_entities(self, entity_ids: list[str]) -> None:
-        """Call turn_off for each entity by domain (light, switch, input_boolean, fan)."""
+    async def _turn_off_super_saving_entities(self, entity_ids: list[str]) -> list[str]:
+        """Call turn_off for each entity by domain (light, switch, input_boolean, fan).
+
+        Returns entity IDs for which a turn_off service call was issued (order follows
+        filtered list order).
+        """
         filtered = self._super_saving_entity_ids(entity_ids)
         if not filtered:
-            return
+            return []
         by_domain: dict[str, list[str]] = {}
+        turned_off: list[str] = []
         for eid in filtered:
             domain = eid.split(".", 1)[0]
             state = self.hass.states.get(eid)
             if state is None or state.state == "off":
                 continue
             by_domain.setdefault(domain, []).append(eid)
+            turned_off.append(eid)
         for domain, eids in by_domain.items():
             await self.hass.services.async_call(
                 domain, "turn_off", {"entity_id": eids}, blocking=True
             )
+        return turned_off
 
     async def _apply_saving(
         self,
@@ -382,13 +423,17 @@ class LoadManager:
         super_saving: bool,
         *,
         decision_context: DecisionContext | None,
+        run_bulk: bool = True,
+        record_emergency_bulk_time: bool = False,
     ) -> None:
         """Turn off all consumer switches/input_booleans; if super_saving, also turn off configured devices (lights, switches, etc.)."""
+        if not run_bulk:
+            return
         if consumers:
-            await self._call_turn_off(consumers)
+            turned = await self._call_turn_off(consumers)
             _LOGGER.debug("Turned off all consumers: %s", consumers)
-            if decision_context is not None:
-                n = len(consumers)
+            if decision_context is not None and turned:
+                n = len(turned)
                 await self._log_action(
                     "INFO",
                     "consumers_turned_off_bulk",
@@ -400,12 +445,14 @@ class LoadManager:
                     ),
                 )
         if super_saving and self.lights_entity_ids:
-            await self._turn_off_super_saving_entities(self.lights_entity_ids)
+            lights_turned = await self._turn_off_super_saving_entities(
+                self.lights_entity_ids
+            )
             _LOGGER.debug(
                 "Turned off super-saving devices: %s", self.lights_entity_ids
             )
-            if decision_context is not None:
-                n = len(self.lights_entity_ids)
+            if decision_context is not None and lights_turned:
+                n = len(lights_turned)
                 await self._log_action(
                     "INFO",
                     "super_saving_devices_off",
@@ -418,6 +465,8 @@ class LoadManager:
                 )
         self.state.consumers_turned_on_by_wasting.clear()
         self._integration_turn_on_at_utc.clear()
+        if record_emergency_bulk_time:
+            self._last_emergency_saving_bulk_utc = datetime.now(timezone.utc)
 
     async def _apply_wasting_budget(
         self,

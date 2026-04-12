@@ -1,0 +1,7 @@
+# Home Assistant loads the integration from custom_components/.
+# User-facing release version: custom_components/energy_manager/manifest.json
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"

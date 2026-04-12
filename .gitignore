@@ -28,3 +28,9 @@ Thumbs.db
 
 # Local overrides / scratch
 *.local
+
+# Logs (local / copied from HA config)
+*.log
+*.log.*
+ops_*.txt
+energy_manager_logs/

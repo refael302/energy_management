@@ -78,8 +78,10 @@ from .const import (
     CONSUMER_ACTIVE_POWER_THRESHOLD_KW,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
+    EMERGENCY_SAVING_BULK_INTERVAL_SEC,
     SYSTEM_MODE_EMERGENCY_SAVING,
     SYSTEM_MODE_NORMAL_WASTING_DWELL_SEC,
+    SYSTEM_MODE_SAVING,
     UPDATE_INTERVAL,
 )
 from .engine import DecisionEngine, EnergyModel, ForecastEngine, LoadManager
@@ -827,6 +829,18 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 discharge_ceiling_kw=discharge_thr_kw,
             )
 
+            prev_system_mode = self._ops_prev_system_mode
+            apply_saving_bulk = True
+            if decision.system_mode == SYSTEM_MODE_SAVING:
+                apply_saving_bulk = prev_system_mode != SYSTEM_MODE_SAVING
+            elif decision.system_mode == SYSTEM_MODE_EMERGENCY_SAVING:
+                if prev_system_mode != SYSTEM_MODE_EMERGENCY_SAVING:
+                    apply_saving_bulk = True
+                else:
+                    apply_saving_bulk = self.load_manager.emergency_saving_bulk_due(
+                        EMERGENCY_SAVING_BULK_INTERVAL_SEC
+                    )
+
             if self._ops_prev_system_mode is not None:
                 if self._ops_prev_system_mode != decision.system_mode:
                     await async_log_event(
@@ -900,6 +914,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.load_manager.apply_mode(
                 decision.system_mode,
                 super_saving=super_saving,
+                apply_saving_bulk=apply_saving_bulk,
                 house_consumption_entity_id=self._entity_ids.get("house"),
                 wasting_context=wasting_context,
                 suppress_wasting_turn_ons=decision.suppress_wasting_turn_ons,
