@@ -94,8 +94,6 @@ CONSUMER_LEARN_TIMEOUT_SEC = 120.0
 
 # Update interval for coordinator (seconds)
 UPDATE_INTERVAL = 30
-# Ops log: full SYSTEM snapshot interval (seconds)
-HOURLY_SNAPSHOT_INTERVAL_SEC = 3600
 # Forecast and strategy cache (minutes) – fetch/update every 15 min, use cache between
 FORECAST_STRATEGY_CACHE_MINUTES = 15
 

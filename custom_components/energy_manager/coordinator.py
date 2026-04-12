@@ -5,6 +5,7 @@ Data coordinator – polls sensors and forecast every 30s, runs decision engine 
 from __future__ import annotations
 
 import logging
+import uuid
 from collections import deque
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -74,7 +75,6 @@ from .const import (
     EOD_BATTERY_TARGET_PLANNING_PERCENT,
     MORNING_TARGET_PLANNING_PERCENT,
     FORECAST_STRATEGY_CACHE_MINUTES,
-    INTEGRATION_LOG_ENABLED,
     CONSUMER_ACTIVE_POWER_THRESHOLD_KW,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     NIGHT_BRIDGE_HOURS_BEFORE_SUNRISE,
@@ -99,7 +99,7 @@ from .daily_energy_stats import (
     forecast_elapsed_today_kwh,
     forecast_full_day_kwh,
 )
-from .hourly_snapshot import build_hourly_snapshot_lines
+from .decision_context import build_decision_context
 from .integration_log import async_log_event
 
 _LOGGER = logging.getLogger(__name__)
@@ -416,33 +416,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._integration_alert_seq = 0
         self.async_set_updated_data({**(self.data or {}), **self._integration_alert_data()})
 
-    async def async_log_hourly_snapshot(self) -> None:
-        """Append a readable multi-line SYSTEM snapshot to the ops log (once per hour)."""
-        if not INTEGRATION_LOG_ENABLED or not self.data:
-            return
-        try:
-            snapshot_id = dt_util.now().isoformat(timespec="seconds")
-            lines = build_hourly_snapshot_lines(
-                self.hass, self.data, self._entity_ids
-            )
-            n = len(lines)
-            for i, summary in enumerate(lines):
-                await async_log_event(
-                    self.hass,
-                    self.entry.entry_id,
-                    "INFO",
-                    "SYSTEM",
-                    "hourly_system_snapshot",
-                    summary,
-                    {
-                        "reason_code": f"snapshot_line_{i + 1:02d}_of_{n:02d}",
-                        "snapshot_id": snapshot_id,
-                    },
-                    integration_alerts=(i == 0),
-                )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Hourly ops snapshot skipped: %s", err)
-
     def _schedule_consumer_learn(self, entity_id: str) -> None:
         """No-op hook kept for load-manager compatibility."""
         _LOGGER.debug("Consumer learn scheduling hook called for %s", entity_id)
@@ -450,6 +423,9 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch sensors, forecast, update model, run decision, apply load manager."""
         try:
+            tick_id = (
+                f"{dt_util.now().strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
+            )
             await self._daily_energy.async_ensure_loaded()
             # 1. Sensor values (power in W -> kW where needed)
             soc = _float_state(self.hass, self._entity_ids["battery_soc"] or "")
@@ -627,7 +603,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "FORECAST",
                             "forecast_using_disk_cache",
                             "Open-Meteo unavailable; using persisted hourly cache",
-                            {"reason_code": "disk_cache"},
+                            {"tick_id": tick_id, "reason_code": "disk_cache"},
                         )
                     elif self._last_forecast is not None and getattr(
                         self._last_forecast, "available", False
@@ -644,7 +620,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "FORECAST",
                             "forecast_using_memory_cache",
                             "Open-Meteo unavailable; using in-memory forecast",
-                            {"reason_code": "memory_cache"},
+                            {"tick_id": tick_id, "reason_code": "memory_cache"},
                         )
                     else:
                         self._last_forecast = forecast
@@ -665,6 +641,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "forecast_availability_changed",
                     f"Forecast available {self._prev_forecast_available} -> {forecast_available}",
                     {
+                        "tick_id": tick_id,
                         "reason_code": "availability_toggle",
                         "from_available": str(self._prev_forecast_available),
                         "to_available": str(forecast_available),
@@ -741,42 +718,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             decision = self._apply_normal_wasting_dwell(decision)
             self._last_decision = decision
-
-            if self._ops_prev_system_mode is not None:
-                if self._ops_prev_system_mode != decision.system_mode:
-                    await async_log_event(
-                        self.hass,
-                        self.entry.entry_id,
-                        "INFO",
-                        "MODE",
-                        "system_mode_changed",
-                        f"System mode {self._ops_prev_system_mode} -> {decision.system_mode}",
-                        {
-                            "reason_code": "decision_engine",
-                            "from_mode": self._ops_prev_system_mode,
-                            "to_mode": decision.system_mode,
-                            "mode_reason": decision.mode_reason,
-                        },
-                    )
-            self._ops_prev_system_mode = decision.system_mode
-
-            if self._ops_prev_strategy is not None:
-                if self._ops_prev_strategy != decision.strategy_recommendation:
-                    await async_log_event(
-                        self.hass,
-                        self.entry.entry_id,
-                        "INFO",
-                        "MODE",
-                        "strategy_recommendation_changed",
-                        f"Strategy {self._ops_prev_strategy} -> {decision.strategy_recommendation}",
-                        {
-                            "reason_code": "strategy_update",
-                            "from_strategy": self._ops_prev_strategy,
-                            "to_strategy": decision.strategy_recommendation,
-                            "strategy_reason": decision.strategy_reason,
-                        },
-                    )
-            self._ops_prev_strategy = decision.strategy_recommendation
 
             # 5. Consumer budget (wasting) + load manager
             super_saving = self.model.battery_status == "very low"
@@ -858,17 +799,75 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ),
                 )
 
+            m_dis_ceiling = max(
+                MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
+                float(self.model.max_battery_discharge_kw),
+            )
+            discharge_thr_kw = round(
+                m_dis_ceiling * (1.0 - DISCHARGE_HEADROOM_FRACTION), 3
+            )
+            discharge_obs_kw = round(max(0.0, self.model.battery_power_kw), 3)
+            eff_budget_for_ctx = (
+                effective_budget_kw
+                if decision.system_mode == SYSTEM_MODE_WASTING
+                else None
+            )
+            decision_context = build_decision_context(
+                tick_id,
+                system_mode=decision.system_mode,
+                mode_reason=decision.mode_reason,
+                strategy_recommendation=decision.strategy_recommendation,
+                strategy_reason=decision.strategy_reason,
+                battery_soc=float(soc),
+                forecast_available=forecast_available,
+                daily_margin_kwh=float(self.model.daily_margin_kwh),
+                evening_margin_kwh=float(self.model.evening_margin_kwh),
+                effective_budget_kw_wasting=eff_budget_for_ctx,
+                battery_discharge_kw=discharge_obs_kw,
+                discharge_ceiling_kw=discharge_thr_kw,
+            )
+
+            if self._ops_prev_system_mode is not None:
+                if self._ops_prev_system_mode != decision.system_mode:
+                    await async_log_event(
+                        self.hass,
+                        self.entry.entry_id,
+                        "INFO",
+                        "MODE",
+                        "system_mode_changed",
+                        f"System mode {self._ops_prev_system_mode} -> {decision.system_mode}",
+                        {
+                            **decision_context.to_flat_log_dict(),
+                            "reason_code": "decision_engine",
+                            "from_mode": self._ops_prev_system_mode,
+                            "to_mode": decision.system_mode,
+                        },
+                    )
+            self._ops_prev_system_mode = decision.system_mode
+
+            if self._ops_prev_strategy is not None:
+                if self._ops_prev_strategy != decision.strategy_recommendation:
+                    await async_log_event(
+                        self.hass,
+                        self.entry.entry_id,
+                        "INFO",
+                        "MODE",
+                        "strategy_recommendation_changed",
+                        f"Strategy {self._ops_prev_strategy} -> {decision.strategy_recommendation}",
+                        {
+                            **decision_context.to_flat_log_dict(),
+                            "reason_code": "strategy_update",
+                            "from_strategy": self._ops_prev_strategy,
+                            "to_strategy": decision.strategy_recommendation,
+                        },
+                    )
+            self._ops_prev_strategy = decision.strategy_recommendation
+
             consumer_list_norm = _normalize_consumer_entity_ids(
                 [c.get(CONF_CONSUMER_SWITCH_ENTITY_ID) for c in consumers_cfg]
             )
 
             if discharge_just_entered_max:
-                m_dis = max(
-                    MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
-                    float(self.model.max_battery_discharge_kw),
-                )
-                thr_kw = round(m_dis * (1.0 - DISCHARGE_HEADROOM_FRACTION), 3)
-                dis_kw = round(max(0.0, self.model.battery_power_kw), 3)
                 prev_st = self._prev_discharge_state or "initial"
                 await async_log_event(
                     self.hass,
@@ -877,16 +876,15 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "SYSTEM",
                     "discharge_state_max_entered",
                     (
-                        f"discharge_state is max: battery discharge {dis_kw} kW "
-                        f">= ceiling threshold {thr_kw} kW "
-                        f"(effective max discharge {round(m_dis, 3)} kW); "
+                        f"discharge_state is max: battery discharge {discharge_obs_kw} kW "
+                        f">= ceiling threshold {discharge_thr_kw} kW "
+                        f"(effective max discharge {round(m_dis_ceiling, 3)} kW); "
                         f"previous discharge_state={prev_st}"
                     ),
                     {
+                        **decision_context.to_flat_log_dict(),
                         "reason_code": "discharge_max",
-                        "battery_discharge_kw": str(dis_kw),
-                        "discharge_ceiling_kw": str(thr_kw),
-                        "max_battery_discharge_kw": str(round(m_dis, 3)),
+                        "max_battery_discharge_kw": str(round(m_dis_ceiling, 3)),
                         "prev_discharge_state": prev_st,
                     },
                 )
@@ -895,6 +893,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self.load_manager.discharge_over_limit_turn_off_one(
                     consumer_list_norm,
                     learned_kw=self.consumer_learner.get_learned_kw(),
+                    decision_context=decision_context,
                 )
 
             house_kw_before_load_actions = self.model.house_consumption_kw
@@ -904,6 +903,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 house_consumption_entity_id=self._entity_ids.get("house"),
                 wasting_context=wasting_context,
                 suppress_wasting_turn_ons=decision.suppress_wasting_turn_ons,
+                decision_context=decision_context,
             )
             house_ent_id = self._entity_ids.get("house")
             house_sensor_configured = isinstance(house_ent_id, str) and bool(
@@ -1312,7 +1312,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "SYSTEM",
                     "coordinator_update_failed",
                     "Coordinator update raised an exception",
-                    {"reason_code": "exception", "error": str(e)},
+                    {
+                        "tick_id": tick_id,
+                        "reason_code": "exception",
+                        "error": str(e),
+                    },
                 )
             except Exception:  # noqa: BLE001
                 pass

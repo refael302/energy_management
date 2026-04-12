@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -12,12 +11,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr, entity_registry as er
-from homeassistant.helpers.event import async_track_time_interval
-
 from .const import (
     CONF_CONSUMERS,
     DOMAIN,
-    HOURLY_SNAPSHOT_INTERVAL_SEC,
     NAME,
     SERVICE_CLEAR_INTEGRATION_ALERTS,
     SERVICE_RESET_CONSUMER_LEARN,
@@ -262,16 +258,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    async def _hourly_ops_snapshot(_now: Any = None) -> None:
-        await coordinator.async_log_hourly_snapshot()
-
-    entry.async_on_unload(
-        async_track_time_interval(
-            hass,
-            _hourly_ops_snapshot,
-            timedelta(seconds=HOURLY_SNAPSHOT_INTERVAL_SEC),
-        )
-    )
     tg_stop = asyncio.Event()
     tg_task = hass.async_create_background_task(
         telegram_poll_loop(hass, entry.entry_id, tg_stop),

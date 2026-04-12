@@ -25,10 +25,45 @@ from ..const import (
     SYSTEM_MODE_SAVING,
     SYSTEM_MODE_WASTING,
 )
+from ..decision_context import DecisionContext
 from ..integration_log import async_log_event
 from .consumer_budget import next_unlearned_for_sampling
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _action_summary_bulk_consumers_off(
+    decision_context: DecisionContext, *, count: int, reason_code: str
+) -> str:
+    d = decision_context.to_flat_log_dict()
+    return (
+        f"Bulk off {count} consumers | {reason_code} | "
+        f"mode={d['system_mode']} soc={d['battery_soc_percent']}%"
+    )[:200]
+
+
+def _action_summary_super_saving(*, count: int, reason_code: str) -> str:
+    return f"Super-saving off {count} devices | {reason_code}"[:200]
+
+
+def _action_summary_entity_off(
+    decision_context: DecisionContext, entity_id: str, reason_code: str
+) -> str:
+    d = decision_context.to_flat_log_dict()
+    return (
+        f"Turn off {entity_id} | {reason_code} | mode={d['system_mode']}"
+    )[:200]
+
+
+def _action_summary_entity_on(
+    decision_context: DecisionContext, entity_id: str, reason_code: str
+) -> str:
+    d = decision_context.to_flat_log_dict()
+    return f"Turn on {entity_id} | {reason_code} | mode={d['system_mode']}"[:200]
+
+
+def _action_summary_discharge_noop(decision_context: DecisionContext) -> str:
+    return "Discharge limit noop | discharge_over_limit_no_targets"[:200]
 
 
 # Entities that can be used as consumers (turn_on/turn_off).
@@ -195,20 +230,24 @@ class LoadManager:
         house_consumption_entity_id: str | None = None,
         wasting_context: WastingContext | None = None,
         suppress_wasting_turn_ons: bool = False,
+        decision_context: DecisionContext | None = None,
     ) -> None:
         """
         Apply actions for the given system mode.
         wasting_context: when mode is wasting, carries greedy learned_target and discharge hints.
         suppress_wasting_turn_ons: when True, still allow wasting turn-offs but no new turn-ons.
+        decision_context: per-tick snapshot from coordinator for ACTION logs (required when logging).
         """
         self._integration_turn_on_eids_this_apply.clear()
         consumers = self._consumer_entity_ids(self.consumer_entity_ids)
+        dc = decision_context
         if system_mode == SYSTEM_MODE_WASTING:
             if wasting_context is not None:
                 await self._apply_wasting_budget(
                     wasting_context,
                     house_consumption_entity_id,
                     suppress_turn_ons=suppress_wasting_turn_ons,
+                    decision_context=dc,
                 )
             else:
                 await self._apply_wasting_fallback(
@@ -216,13 +255,14 @@ class LoadManager:
                     house_consumption_entity_id,
                     learned_kw={},
                     suppress_turn_ons=suppress_wasting_turn_ons,
+                    decision_context=dc,
                 )
         elif system_mode == SYSTEM_MODE_EMERGENCY_SAVING:
-            await self._apply_saving(consumers, super_saving=True)
+            await self._apply_saving(consumers, super_saving=True, decision_context=dc)
         elif system_mode == SYSTEM_MODE_SAVING:
-            await self._apply_saving(consumers, super_saving)
+            await self._apply_saving(consumers, super_saving, decision_context=dc)
         else:
-            await self._apply_off_once(consumers)
+            await self._apply_off_once(consumers, decision_context=dc)
 
     def _domain(self, entity_id: str) -> str | None:
         """Return entity domain if it is a supported consumer, else None."""
@@ -277,7 +317,12 @@ class LoadManager:
         while entity_id in self.state.consumers_turned_on_by_wasting:
             self.state.consumers_turned_on_by_wasting.remove(entity_id)
 
-    async def _apply_off_once(self, consumers: list[str]) -> None:
+    async def _apply_off_once(
+        self,
+        consumers: list[str],
+        *,
+        decision_context: DecisionContext | None,
+    ) -> None:
         """Turn off one integration-managed consumer (LIFO), per user delay_minutes."""
         to_consider = [
             eid
@@ -293,12 +338,17 @@ class LoadManager:
             await self._call_turn_off([entity_id])
             self._last_turn_off_time = datetime.now(timezone.utc)
             _LOGGER.debug("Turned off (normal, LIFO): %s", entity_id)
-            await self._log_action(
-                "INFO",
-                "consumer_turned_off",
-                f"Turned off {entity_id} (normal LIFO)",
-                {"entity_id": entity_id, "reason_code": "normal_lifo"},
-            )
+            if decision_context is not None:
+                await self._log_action(
+                    "INFO",
+                    "consumer_turned_off",
+                    _action_summary_entity_off(
+                        decision_context, entity_id, "normal_lifo"
+                    ),
+                    decision_context.merge_action_context(
+                        reason_code="normal_lifo", entity_id=entity_id
+                    ),
+                )
             return
 
     def _super_saving_entity_ids(self, entity_ids: list[str]) -> list[str]:
@@ -327,35 +377,45 @@ class LoadManager:
             )
 
     async def _apply_saving(
-        self, consumers: list[str], super_saving: bool
+        self,
+        consumers: list[str],
+        super_saving: bool,
+        *,
+        decision_context: DecisionContext | None,
     ) -> None:
         """Turn off all consumer switches/input_booleans; if super_saving, also turn off configured devices (lights, switches, etc.)."""
         if consumers:
             await self._call_turn_off(consumers)
             _LOGGER.debug("Turned off all consumers: %s", consumers)
-            await self._log_action(
-                "INFO",
-                "consumers_turned_off_bulk",
-                f"Turned off {len(consumers)} consumer(s) (saving mode)",
-                {
-                    "reason_code": "saving",
-                    "count": str(len(consumers)),
-                },
-            )
+            if decision_context is not None:
+                n = len(consumers)
+                await self._log_action(
+                    "INFO",
+                    "consumers_turned_off_bulk",
+                    _action_summary_bulk_consumers_off(
+                        decision_context, count=n, reason_code="saving"
+                    ),
+                    decision_context.merge_action_context(
+                        reason_code="saving", count=str(n)
+                    ),
+                )
         if super_saving and self.lights_entity_ids:
             await self._turn_off_super_saving_entities(self.lights_entity_ids)
             _LOGGER.debug(
                 "Turned off super-saving devices: %s", self.lights_entity_ids
             )
-            await self._log_action(
-                "INFO",
-                "super_saving_devices_off",
-                f"Turned off {len(self.lights_entity_ids)} super-saving device(s)",
-                {
-                    "reason_code": "super_saving",
-                    "count": str(len(self.lights_entity_ids)),
-                },
-            )
+            if decision_context is not None:
+                n = len(self.lights_entity_ids)
+                await self._log_action(
+                    "INFO",
+                    "super_saving_devices_off",
+                    _action_summary_super_saving(
+                        count=n, reason_code="super_saving"
+                    ),
+                    decision_context.merge_action_context(
+                        reason_code="super_saving", count=str(n)
+                    ),
+                )
         self.state.consumers_turned_on_by_wasting.clear()
         self._integration_turn_on_at_utc.clear()
 
@@ -365,6 +425,7 @@ class LoadManager:
         house_consumption_entity_id: str | None,
         *,
         suppress_turn_ons: bool = False,
+        decision_context: DecisionContext | None = None,
     ) -> None:
         """One turn-on or turn-off per eligible tick, prioritizing turn-off for safety."""
         now_utc = datetime.now(timezone.utc)
@@ -394,12 +455,17 @@ class LoadManager:
             self._last_turn_off_time = datetime.now(timezone.utc)
             self._last_turn_off_delay_sec = self._delay_seconds_for_entity(eid, learned_kw)
             _LOGGER.debug("Wasting budget: turned off %s (not in target)", eid)
-            await self._log_action(
-                "INFO",
-                "consumer_turned_off",
-                f"Wasting: turned off {eid} (not in budget target)",
-                {"entity_id": eid, "reason_code": "wasting_not_in_target"},
-            )
+            if decision_context is not None:
+                await self._log_action(
+                    "INFO",
+                    "consumer_turned_off",
+                    _action_summary_entity_off(
+                        decision_context, eid, "wasting_not_in_target"
+                    ),
+                    decision_context.merge_action_context(
+                        reason_code="wasting_not_in_target", entity_id=eid
+                    ),
+                )
             return
 
         if suppress_turn_ons:
@@ -421,12 +487,17 @@ class LoadManager:
             self._last_turn_on_time = datetime.now(timezone.utc)
             self._last_turn_on_delay_sec = self._delay_seconds_for_entity(eid, learned_kw)
             _LOGGER.debug("Wasting budget: turned on %s (target)", eid)
-            await self._log_action(
-                "INFO",
-                "consumer_turned_on",
-                f"Wasting: turned on {eid} (in budget target)",
-                {"entity_id": eid, "reason_code": "wasting_target"},
-            )
+            if decision_context is not None:
+                await self._log_action(
+                    "INFO",
+                    "consumer_turned_on",
+                    _action_summary_entity_on(
+                        decision_context, eid, "wasting_target"
+                    ),
+                    decision_context.merge_action_context(
+                        reason_code="wasting_target", entity_id=eid
+                    ),
+                )
             if self._schedule_consumer_learn:
                 self._schedule_consumer_learn(eid)
             return
@@ -451,12 +522,20 @@ class LoadManager:
                     _LOGGER.debug(
                         "Wasting budget: turned on %s (learn path)", candidate
                     )
-                    await self._log_action(
-                        "INFO",
-                        "consumer_turned_on",
-                        f"Wasting: turned on {candidate} (unlearned sampling)",
-                        {"entity_id": candidate, "reason_code": "wasting_learn_path"},
-                    )
+                    if decision_context is not None:
+                        await self._log_action(
+                            "INFO",
+                            "consumer_turned_on",
+                            _action_summary_entity_on(
+                                decision_context,
+                                candidate,
+                                "wasting_learn_path",
+                            ),
+                            decision_context.merge_action_context(
+                                reason_code="wasting_learn_path",
+                                entity_id=candidate,
+                            ),
+                        )
                     if self._schedule_consumer_learn:
                         self._schedule_consumer_learn(candidate)
 
@@ -467,6 +546,7 @@ class LoadManager:
         learned_kw: dict[str, float],
         *,
         suppress_turn_ons: bool = False,
+        decision_context: DecisionContext | None = None,
     ) -> None:
         """Legacy one-per-delay when no wasting_context provided."""
         if suppress_turn_ons:
@@ -487,12 +567,17 @@ class LoadManager:
                 )
                 self._append_managed(entity_id)
                 _LOGGER.debug("Turned on consumer (fallback): %s", entity_id)
-                await self._log_action(
-                    "INFO",
-                    "consumer_turned_on",
-                    f"Wasting fallback: turned on {entity_id}",
-                    {"entity_id": entity_id, "reason_code": "wasting_fallback"},
-                )
+                if decision_context is not None:
+                    await self._log_action(
+                        "INFO",
+                        "consumer_turned_on",
+                        _action_summary_entity_on(
+                            decision_context, entity_id, "wasting_fallback"
+                        ),
+                        decision_context.merge_action_context(
+                            reason_code="wasting_fallback", entity_id=entity_id
+                        ),
+                    )
                 if self._schedule_consumer_learn:
                     self._schedule_consumer_learn(entity_id)
                 return
@@ -501,6 +586,8 @@ class LoadManager:
         self,
         consumer_entity_ids: list[str],
         learned_kw: dict[str, float] | None = None,  # unused; kept for call-site compatibility
+        *,
+        decision_context: DecisionContext | None = None,
     ) -> None:
         """Turn off one on-consumer: lowest config priority first (inverse of turn-on order)."""
         consumers = self._consumer_entity_ids(consumer_entity_ids or [])
@@ -510,12 +597,15 @@ class LoadManager:
             if (st := self.hass.states.get(eid)) and st.state == "on"
         ]
         if not on_list:
-            await self._log_action(
-                "INFO",
-                "discharge_over_limit_no_action",
-                "Discharge at limit: no configured consumer was on; nothing was turned off",
-                {"reason_code": "discharge_over_limit_no_targets"},
-            )
+            if decision_context is not None:
+                await self._log_action(
+                    "INFO",
+                    "discharge_over_limit_no_action",
+                    _action_summary_discharge_noop(decision_context),
+                    decision_context.merge_action_context(
+                        reason_code="discharge_over_limit_no_targets"
+                    ),
+                )
             return
         order_i = {e: i for i, e in enumerate(consumers)}
         on_list.sort(key=lambda e: order_i.get(e, 999), reverse=True)
@@ -534,9 +624,17 @@ class LoadManager:
                 "Discharge over limit: turned off one consumer %s",
                 entity_id,
             )
-            await self._log_action(
-                "WARN",
-                "consumer_turned_off",
-                f"Discharge at limit: turned off {entity_id}",
-                {"entity_id": entity_id, "reason_code": "discharge_over_limit"},
-            )
+            if decision_context is not None:
+                d = decision_context.to_flat_log_dict()
+                summary = (
+                    f"Turn off {entity_id} | discharge_over_limit | "
+                    f"dis={d['battery_discharge_kw']} ceiling={d['discharge_ceiling_kw']}"
+                )[:200]
+                await self._log_action(
+                    "WARN",
+                    "consumer_turned_off",
+                    summary,
+                    decision_context.merge_action_context(
+                        reason_code="discharge_over_limit", entity_id=entity_id
+                    ),
+                )
