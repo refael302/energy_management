@@ -23,6 +23,7 @@ from ..const import (
 )
 from ..integration_log import async_log_event
 from .consumer_learn_cache import create_consumer_learn_store
+from .house_delta_sample_math import best_triple_from_four, relative_spread_kw as _relative_spread_kw
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,15 +49,6 @@ def _load_max_power_kw_from_stored(m: dict[str, Any]) -> float:
     if v > 100:
         return v / 1000.0
     return v
-
-
-def _relative_spread_kw(samples: list[float]) -> float:
-    if len(samples) < 2:
-        return 0.0
-    lo, hi = min(samples), max(samples)
-    mean = sum(samples) / len(samples)
-    denom = max(mean, 0.05)
-    return (hi - lo) / denom
 
 
 @dataclass
@@ -434,6 +426,44 @@ class ConsumerLearner:
                 ctx,
             )
 
+    def _apply_house_delta_learn_unlocked(
+        self,
+        entity_id: str,
+        kw: float,
+        samples: list[float],
+        spread: float,
+        log_events: list[tuple[str, str, str, dict[str, str]]],
+    ) -> bool:
+        kw = round(max(0.0, kw), 4)
+        self._runtime.metrics[entity_id] = {
+            "max_power_kw": round(kw, 3),
+            "energy_per_hour_latest_kwh": kw,
+            "energy_per_hour_active_avg_kwh": kw,
+        }
+        self._runtime.learn_source[entity_id] = LEARN_SOURCE_HOUSE_DELTA
+        self._runtime.house_delta_samples.pop(entity_id, None)
+        log_events.append(
+            (
+                "INFO",
+                "consumer_house_delta_learned",
+                f"Learned {entity_id} from house meter delta (~{kw} kW)",
+                {
+                    "entity_id": entity_id,
+                    "learned_kw": str(kw),
+                    "samples": str(samples),
+                    "spread_ratio": str(round(spread, 4)),
+                },
+            )
+        )
+        _LOGGER.info(
+            "House-delta learned %s: %.3f kW (samples=%s spread=%.4f)",
+            entity_id,
+            kw,
+            samples,
+            spread,
+        )
+        return True
+
     def _try_finalize_house_delta_unlocked(
         self,
         entity_id: str,
@@ -441,60 +471,52 @@ class ConsumerLearner:
     ) -> bool:
         if entity_id in self._runtime.metrics or entity_id in self._runtime.unmeasurable:
             return False
-        samples = self._runtime.house_delta_samples.get(entity_id, [])
-        if len(samples) < CONSUMER_LEARN_MIN_SAMPLES:
+        raw = self._runtime.house_delta_samples.get(entity_id, [])
+        if len(raw) > CONSUMER_HOUSE_DELTA_MAX_SAMPLES:
+            raw = raw[-CONSUMER_HOUSE_DELTA_MAX_SAMPLES :]
+            self._runtime.house_delta_samples[entity_id] = raw
+        samples = list(raw)
+        n = len(samples)
+        if n < CONSUMER_LEARN_MIN_SAMPLES:
             return False
-        spread = _relative_spread_kw(samples)
-        if spread <= CONSUMER_LEARN_SPREAD_MAX:
-            avg = sum(samples) / len(samples)
-            kw = round(max(0.0, avg), 4)
-            self._runtime.metrics[entity_id] = {
-                "max_power_kw": round(kw, 3),
-                "energy_per_hour_latest_kwh": kw,
-                "energy_per_hour_active_avg_kwh": kw,
-            }
-            self._runtime.learn_source[entity_id] = LEARN_SOURCE_HOUSE_DELTA
-            self._runtime.house_delta_samples.pop(entity_id, None)
-            log_events.append(
-                (
-                    "INFO",
-                    "consumer_house_delta_learned",
-                    f"Learned {entity_id} from house meter delta (~{kw} kW)",
-                    {
-                        "entity_id": entity_id,
-                        "learned_kw": str(kw),
-                        "samples": str(len(samples)),
-                        "spread_ratio": str(round(spread, 4)),
-                    },
+
+        if n == 3:
+            spread = _relative_spread_kw(samples)
+            if spread <= CONSUMER_LEARN_SPREAD_MAX:
+                avg = sum(samples) / 3.0
+                return self._apply_house_delta_learn_unlocked(
+                    entity_id, avg, samples, spread, log_events
                 )
+            return False
+
+        # n == 4: try dropping one outlier; no 5th sample is ever used
+        assert n == 4
+        triple = best_triple_from_four(samples, CONSUMER_LEARN_SPREAD_MAX)
+        if triple is not None:
+            mean_kw, triple_spread = triple
+            return self._apply_house_delta_learn_unlocked(
+                entity_id, mean_kw, samples, triple_spread, log_events
             )
-            _LOGGER.info(
-                "House-delta learned %s: %.3f kW from %s samples",
-                entity_id,
-                kw,
-                len(samples),
+
+        self._runtime.unmeasurable.add(entity_id)
+        self._runtime.house_delta_samples.pop(entity_id, None)
+        full_spread = _relative_spread_kw(samples)
+        log_events.append(
+            (
+                "WARN",
+                "consumer_house_delta_unmeasurable",
+                f"House meter delta for {entity_id} inconsistent after {CONSUMER_HOUSE_DELTA_MAX_SAMPLES} samples",
+                {
+                    "entity_id": entity_id,
+                    "samples": str(samples),
+                    "spread_ratio": str(round(full_spread, 4)),
+                },
             )
-            return True
-        if len(samples) >= CONSUMER_HOUSE_DELTA_MAX_SAMPLES:
-            self._runtime.unmeasurable.add(entity_id)
-            self._runtime.house_delta_samples.pop(entity_id, None)
-            log_events.append(
-                (
-                    "WARN",
-                    "consumer_house_delta_unmeasurable",
-                    f"House meter delta for {entity_id} inconsistent after {CONSUMER_HOUSE_DELTA_MAX_SAMPLES} samples",
-                    {
-                        "entity_id": entity_id,
-                        "samples": str(samples),
-                        "spread_ratio": str(round(spread, 4)),
-                    },
-                )
-            )
-            _LOGGER.warning(
-                "House-delta unmeasurable: %s (samples=%s spread=%.3f)",
-                entity_id,
-                samples,
-                spread,
-            )
-            return True
-        return False
+        )
+        _LOGGER.warning(
+            "House-delta unmeasurable: %s (samples=%s spread=%.3f)",
+            entity_id,
+            samples,
+            full_spread,
+        )
+        return True

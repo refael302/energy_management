@@ -80,14 +80,14 @@ CONSUMER_BUDGET_MARGIN_LARGE_CAP_KW = 80.0  # plenty of headroom
 
 CONSUMER_LEARN_MIN_SAMPLES = 3
 CONSUMER_LEARN_MAX_SAMPLES = 12
-# House-meter delta learning (no per-consumer power sensor): samples after integration turn-on
-CONSUMER_HOUSE_DELTA_MAX_SAMPLES = 5
+# House-meter delta learning (no per-consumer power sensor): max samples before learn or unmeasurable
+CONSUMER_HOUSE_DELTA_MAX_SAMPLES = 4
 # After integration turn-on: ignore house sensor updates until this many seconds passed
 # (avoid reading while the switch / mesh is still applying).
 CONSUMER_HOUSE_DELTA_MIN_GUARD_SEC = 3.0
 # If last_changed never moves after the guard (slow or static sensor), sample anyway.
 CONSUMER_HOUSE_DELTA_FALLBACK_SEC = 120.0
-# Finalize when (max-min)/mean <= this ratio, or after dropping one outlier
+# Triple is consistent when (max-min)/mean <= this ratio; with 4 samples drop one outlier if needed
 CONSUMER_LEARN_SPREAD_MAX = 0.10
 # Wait for house sensor to publish a new state after turn_on
 CONSUMER_LEARN_TIMEOUT_SEC = 120.0
