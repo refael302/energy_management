@@ -154,7 +154,6 @@ def _append_and_cleanup_sync(
     path: str,
     entry_id: str,
     lines: list[str],
-    *,
     log_dir: str,
     run_cleanup: bool,
     today_local: date,
@@ -351,10 +350,10 @@ async def async_log_event(
             path,
             entry_id,
             all_lines,
-            log_dir=log_dir,
-            run_cleanup=run_cleanup,
-            today_local=today_local,
-            retention_days=INTEGRATION_LOG_RETENTION_DAYS,
+            log_dir,
+            run_cleanup,
+            today_local,
+            INTEGRATION_LOG_RETENTION_DAYS,
         )
         if not write_ok:
             return
