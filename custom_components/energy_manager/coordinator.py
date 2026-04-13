@@ -8,7 +8,7 @@ import logging
 import uuid
 from collections import deque
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -307,6 +307,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._locked_consumer_budget_kw: float | None = None
         self._ops_prev_system_mode: str | None = None
         self._ops_prev_strategy: str | None = None
+        self._ops_log_heartbeat_date: date | None = None
         self._dwell_committed_mode: str | None = None
         self._dwell_mode_changed_at: datetime | None = None
         self._integration_alerts: deque[dict[str, Any]] = deque(maxlen=INTEGRATION_ALERTS_MAX)
@@ -1176,6 +1177,26 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 stats_fc_vs_actual_delta_kwh = None
                 stats_pv_forecast_shortfall_kwh = None
+
+            today_local_hb = dt_util.as_local(now_local_stats).date()
+            if self._ops_log_heartbeat_date != today_local_hb:
+                self._ops_log_heartbeat_date = today_local_hb
+                await async_log_event(
+                    self.hass,
+                    self.entry.entry_id,
+                    "INFO",
+                    "SYSTEM",
+                    "integration_daily_heartbeat",
+                    f"Coordinator OK (local date {today_local_hb.isoformat()})",
+                    {
+                        "reason_code": f"heartbeat_{today_local_hb.isoformat()}",
+                        "tick_id": tick_id,
+                        "system_mode": decision.system_mode,
+                        "strategy_recommendation": decision.strategy_recommendation,
+                    },
+                    integration_alerts=False,
+                )
+
             return {
                 "model": self.model,
                 "forecast": forecast,

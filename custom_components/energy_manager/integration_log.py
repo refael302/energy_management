@@ -82,7 +82,7 @@ def _notify_coordinator_integration_alerts(
         try:
             push(rec)
         except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("push_integration_alert failed: %s", err)
+            _LOGGER.warning("Energy Manager push_integration_alert failed: %s", err)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,10 +159,10 @@ def _append_and_cleanup_sync(
     run_cleanup: bool,
     today_local: date,
     retention_days: int,
-) -> None:
+) -> bool:
     if run_cleanup and retention_days > 0:
         _cleanup_old_ops_files_sync(log_dir, entry_id, today_local, retention_days)
-    _append_lines_sync(path, entry_id, lines)
+    return _append_lines_sync(path, entry_id, lines)
 
 
 def _clamp(text: str, max_len: int) -> str:
@@ -226,8 +226,8 @@ def _format_event_lines(
     return lines
 
 
-def _append_lines_sync(path: str, entry_id: str, lines: list[str]) -> None:
-    """Blocking I/O; run via hass.async_add_executor_job."""
+def _append_lines_sync(path: str, entry_id: str, lines: list[str]) -> bool:
+    """Blocking I/O; run via hass.async_add_executor_job. Returns False on failure."""
     try:
         directory = os.path.dirname(path)
         os.makedirs(directory, exist_ok=True)
@@ -246,8 +246,14 @@ def _append_lines_sync(path: str, entry_id: str, lines: list[str]) -> None:
             chunks.append(line if line.endswith("\n") else f"{line}\n")
         with open(path, "a", encoding="utf-8", errors="replace") as handle:
             handle.writelines(chunks)
+        return True
     except OSError as err:
-        _LOGGER.debug("integration_log append failed: %s", err)
+        _LOGGER.warning(
+            "Energy Manager ops log write failed (path=%s): %s",
+            path,
+            err,
+        )
+        return False
 
 
 async def async_log_event(
@@ -274,7 +280,11 @@ async def async_log_event(
         return
     try:
         if level not in _VALID_LEVELS or category not in _VALID_CATEGORIES:
-            _LOGGER.debug("integration_log: invalid level/category skipped")
+            _LOGGER.warning(
+                "integration_log: invalid level/category skipped (level=%r category=%r)",
+                level,
+                category,
+            )
             return
         ctx = dict(context) if context else None
         now_mono = time.monotonic()
@@ -336,7 +346,7 @@ async def async_log_event(
         run_cleanup = (now_mono - last_cleanup) >= INTEGRATION_LOG_CLEANUP_INTERVAL_SEC
         if run_cleanup:
             _cleanup_last_mono_by_entry[entry_id] = now_mono
-        await hass.async_add_executor_job(
+        write_ok = await hass.async_add_executor_job(
             _append_and_cleanup_sync,
             path,
             entry_id,
@@ -346,6 +356,8 @@ async def async_log_event(
             today_local=today_local,
             retention_days=INTEGRATION_LOG_RETENTION_DAYS,
         )
+        if not write_ok:
+            return
         _last_write_mono[ek] = now_mono
         records_to_push.append(
             {
@@ -360,4 +372,4 @@ async def async_log_event(
         if integration_alerts:
             _notify_coordinator_integration_alerts(hass, entry_id, records_to_push)
     except Exception as err:  # noqa: BLE001
-        _LOGGER.debug("integration_log async_log_event failed: %s", err)
+        _LOGGER.error("integration_log async_log_event failed: %s", err, exc_info=True)
