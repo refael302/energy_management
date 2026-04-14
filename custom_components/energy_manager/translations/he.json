@@ -216,6 +216,10 @@
         "config_entry_id": {
           "name": "מזהה רשומת הגדרות",
           "description": "מזהה ה-config entry של Energy Manager. השאר ריק לאיפוס כל המופעים."
+        },
+        "entity_id": {
+          "name": "ישות צרכן",
+          "description": "אופציונלי. איפוס למידה רק לישות הזו אם היא מוגדרת כצרכן (מתג / input_boolean)."
         }
       }
     },

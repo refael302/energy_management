@@ -3,7 +3,8 @@ Load manager – ACTIONS: turn on/off consumer switches (and optional lights) by
 Wasting mode uses learned consumer budget from coordinator (greedy target set), with
 1 min between actions for learned entities and 5 min for unlearned (learning path).
 After the integration turns a consumer on, it is not turned off again until
-CONSUMER_MIN_ON_MINUTES have elapsed (saving / discharge_over_limit exempt).
+CONSUMER_MIN_ON_MINUTES (learned) or CONSUMER_MIN_ON_UNLEARNED_MINUTES have elapsed
+(saving / discharge_over_limit exempt).
 Saving mode runs bulk turn-off only on entry to saving (still only calls turn_off
 for entities that are on). Emergency saving repeats bulk at EMERGENCY_SAVING_BULK_INTERVAL_SEC
 while the mode stays active.
@@ -23,6 +24,7 @@ from ..const import (
     CONSUMER_ACTION_DELAY_LEARNED_MINUTES,
     CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
     CONSUMER_MIN_ON_MINUTES,
+    CONSUMER_MIN_ON_UNLEARNED_MINUTES,
     DISCHARGE_SHED_COOLDOWN_SEC,
     SYSTEM_MODE_EMERGENCY_SAVING,
     SYSTEM_MODE_SAVING,
@@ -85,7 +87,6 @@ class WastingContext:
     learned_target: set[str]
     discharge_headroom_kw: float
     marginal_battery_per_kw: float
-    unmeasurable_entity_ids: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -206,16 +207,20 @@ class LoadManager:
         elapsed = (datetime.now(timezone.utc) - self._last_turn_off_time).total_seconds()
         return elapsed >= max(need, self._last_turn_off_delay_sec)
 
-    def _min_on_seconds(self) -> float:
-        return float(CONSUMER_MIN_ON_MINUTES) * 60.0
+    def _min_on_seconds(self, entity_id: str, learned_kw: dict[str, float]) -> float:
+        if entity_id in learned_kw:
+            return float(CONSUMER_MIN_ON_MINUTES) * 60.0
+        return float(CONSUMER_MIN_ON_UNLEARNED_MINUTES) * 60.0
 
-    def _can_turn_off_after_min_on(self, entity_id: str) -> bool:
-        """Block turn-off until CONSUMER_MIN_ON_MINUTES after we turned this entity on."""
+    def _can_turn_off_after_min_on(
+        self, entity_id: str, learned_kw: dict[str, float]
+    ) -> bool:
+        """Block turn-off until min-on minutes after we turned this entity on."""
         t0 = self._integration_turn_on_at_utc.get(entity_id)
         if t0 is None:
             return True
         elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
-        return elapsed >= self._min_on_seconds()
+        return elapsed >= self._min_on_seconds(entity_id, learned_kw)
 
     async def _turn_on_consumer(self, entity_id: str) -> None:
         """turn_on consumer and record UTC time when we transition off -> on."""
@@ -244,6 +249,7 @@ class LoadManager:
         wasting_context: WastingContext | None = None,
         suppress_wasting_turn_ons: bool = False,
         decision_context: DecisionContext | None = None,
+        consumer_learned_kw: dict[str, float] | None = None,
     ) -> None:
         """
         Apply actions for the given system mode.
@@ -290,7 +296,11 @@ class LoadManager:
                 record_emergency_bulk_time=False,
             )
         else:
-            await self._apply_off_once(consumers, decision_context=dc)
+            await self._apply_off_once(
+                consumers,
+                learned_kw=consumer_learned_kw or {},
+                decision_context=dc,
+            )
 
     def _domain(self, entity_id: str) -> str | None:
         """Return entity domain if it is a supported consumer, else None."""
@@ -355,6 +365,7 @@ class LoadManager:
         self,
         consumers: list[str],
         *,
+        learned_kw: dict[str, float],
         decision_context: DecisionContext | None,
     ) -> None:
         """Turn off one integration-managed consumer (LIFO), per user delay_minutes."""
@@ -366,7 +377,7 @@ class LoadManager:
         if not to_consider or not self._can_turn_off_another_normal():
             return
         for entity_id in reversed(to_consider):
-            if not self._can_turn_off_after_min_on(entity_id):
+            if not self._can_turn_off_after_min_on(entity_id, learned_kw):
                 continue
             self._remove_managed(entity_id)
             await self._call_turn_off([entity_id])
@@ -497,7 +508,7 @@ class LoadManager:
                 continue
             if not self._can_turn_off_after_delay(eid, learned_kw):
                 continue
-            if not self._can_turn_off_after_min_on(eid):
+            if not self._can_turn_off_after_min_on(eid, learned_kw):
                 continue
             await self._call_turn_off([eid])
             self._remove_managed(eid)
@@ -557,7 +568,6 @@ class LoadManager:
             target,
             discharge_headroom_kw=ctx.discharge_headroom_kw,
             marginal_battery_per_kw=ctx.marginal_battery_per_kw,
-            unmeasurable_entity_ids=ctx.unmeasurable_entity_ids,
         )
         if candidate and not is_on(candidate):
             if not self._is_under_discharge_shed_cooldown(candidate, now_utc=now_utc):

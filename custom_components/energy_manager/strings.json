@@ -190,6 +190,10 @@
         "config_entry_id": {
           "name": "Config entry ID",
           "description": "Energy Manager config entry id. Leave empty to reset all instances."
+        },
+        "entity_id": {
+          "name": "Consumer entity",
+          "description": "Optional. Reset learn data for this switch/input_boolean only if it is a configured consumer."
         }
       }
     },

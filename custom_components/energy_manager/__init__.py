@@ -18,7 +18,7 @@ from .const import (
     SERVICE_CLEAR_INTEGRATION_ALERTS,
     SERVICE_RESET_CONSUMER_LEARN,
 )
-from .coordinator import EnergyManagerCoordinator
+from .coordinator import EnergyManagerCoordinator, _normalize_consumers
 from .engine.consumer_learn_cache import consumer_learn_fingerprint
 from .telegram_bridge import telegram_poll_loop
 
@@ -38,7 +38,10 @@ _LEGACY_DISCHARGE_LIMIT_DEADBAND_PERCENT = "discharge_limit_deadband_percent"
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH, Platform.SELECT]
 
 RESET_CONSUMER_LEARN_SCHEMA = vol.Schema(
-    {vol.Optional("config_entry_id"): cv.string}
+    {
+        vol.Optional("config_entry_id"): cv.string,
+        vol.Optional("entity_id"): cv.entity_id,
+    }
 )
 
 CLEAR_INTEGRATION_ALERTS_SCHEMA = vol.Schema(
@@ -49,6 +52,7 @@ CLEAR_INTEGRATION_ALERTS_SCHEMA = vol.Schema(
 async def _async_register_services(hass: HomeAssistant) -> None:
     async def handle_reset_consumer_learn(call: ServiceCall) -> None:
         entry_id = call.data.get("config_entry_id")
+        switch_entity_id = call.data.get("entity_id")
         domain_data = hass.data.get(DOMAIN)
         if not isinstance(domain_data, dict):
             return
@@ -60,23 +64,47 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 for k, v in domain_data.items()
                 if isinstance(k, str) and hasattr(v, "consumer_learner")
             ]
+
+        def _refresh_consumer_learn_sensors(coord: EnergyManagerCoordinator) -> None:
+            if coord.data is None:
+                return
+            learned_kw = coord.consumer_learner.get_learned_kw()
+            coord.async_set_updated_data(
+                {
+                    **coord.data,
+                    "consumer_learned_kw": learned_kw,
+                    "consumer_learned_power_kw": round(sum(learned_kw.values()), 3),
+                    "consumer_learned_metrics": coord.consumer_learner.get_metrics(),
+                    "consumer_learn_pending_samples": coord.consumer_learner.get_pending_counts(),
+                    "consumer_learn_pending_kw": coord.consumer_learner.get_pending_samples_kw(),
+                    "consumer_learn_source": coord.consumer_learner.get_learn_source(),
+                    "consumer_unmeasurable_entity_ids": sorted(
+                        coord.consumer_learner.get_unmeasurable()
+                    ),
+                }
+            )
+
         for eid in targets:
             coord = domain_data.get(eid)
             if coord is None or not hasattr(coord, "consumer_learner"):
                 continue
             cfg = {**coord.entry.data, **(coord.entry.options or {})}
             fp = consumer_learn_fingerprint(cfg)
-            await coord.consumer_learner.async_reset(fp)
-            if coord.data is not None:
-                coord.async_set_updated_data(
-                    {
-                        **coord.data,
-                        "consumer_learned_kw": coord.consumer_learner.get_learned_kw(),
-                        "consumer_learned_power_kw": 0.0,
-                        "consumer_learn_pending_samples": coord.consumer_learner.get_pending_counts(),
-                        "consumer_learn_pending_kw": coord.consumer_learner.get_pending_samples_kw(),
-                    }
+            if switch_entity_id:
+                consumer_switches = [
+                    str(c.get(CONF_CONSUMER_SWITCH_ENTITY_ID))
+                    for c in _normalize_consumers(cfg.get(CONF_CONSUMERS))
+                    if isinstance(c.get(CONF_CONSUMER_SWITCH_ENTITY_ID), str)
+                ]
+                if switch_entity_id not in consumer_switches:
+                    continue
+                await coord.consumer_learner.async_clear_consumer_entity(
+                    switch_entity_id, fp
                 )
+                _refresh_consumer_learn_sensors(coord)
+                continue
+            await coord.consumer_learner.async_reset(fp)
+            _refresh_consumer_learn_sensors(coord)
 
     if not hass.services.has_service(DOMAIN, SERVICE_RESET_CONSUMER_LEARN):
         hass.services.async_register(

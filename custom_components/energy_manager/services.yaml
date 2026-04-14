@@ -9,6 +9,15 @@ reset_consumer_learn:
       required: false
       selector:
         text:
+    entity_id:
+      name: Consumer entity
+      description: Optional. Clear learn data for this consumer switch only (must be configured as a consumer).
+      required: false
+      selector:
+        entity:
+          domain:
+            - switch
+            - input_boolean
 
 clear_integration_alerts:
   name: Clear integration alerts

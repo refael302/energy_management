@@ -42,6 +42,10 @@ CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES = 5
 # Minimum time a consumer must stay on after the integration turns it on, before we may turn it off
 # again (wasting / normal LIFO). Saving mode and discharge_over_limit ignore this.
 CONSUMER_MIN_ON_MINUTES = 5
+# Longer minimum on for consumers not yet in learned_kw (house-delta / cautious path).
+CONSUMER_MIN_ON_UNLEARNED_MINUTES = 12
+# Assumed kW for an unlearned consumer when checking discharge headroom before learn-path turn-on.
+CONSUMER_UNLEARNED_ASSUMED_KW = 2.0
 # Hysteresis: only adopt new raw budget if relative change >= this ratio vs last locked budget
 # (fixed in code; not exposed in config UI)
 DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO = 0.15

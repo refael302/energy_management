@@ -123,11 +123,6 @@ class ConsumerLearnRuntime:
                         continue
                 if row:
                     self.house_delta_samples[eid] = row
-        um = store_data.get("unmeasurable")
-        if isinstance(um, list):
-            for x in um:
-                if isinstance(x, str):
-                    self.unmeasurable.add(x)
 
 
 class ConsumerLearner:
@@ -150,7 +145,8 @@ class ConsumerLearner:
             "house_delta_samples": {
                 k: list(v) for k, v in self._runtime.house_delta_samples.items()
             },
-            "unmeasurable": sorted(self._runtime.unmeasurable),
+            # Legacy key kept empty: unmeasurable no longer blocks scheduling after load.
+            "unmeasurable": [],
         }
 
     @property
@@ -226,6 +222,24 @@ class ConsumerLearner:
             self._runtime.house_delta_samples.clear()
             self._runtime.unmeasurable.clear()
             self._house_delta_wait.clear()
+            await self._store.async_save(self._persist_dict())
+
+    async def async_clear_consumer_entity(
+        self, consumer_entity_id: str, fingerprint: str
+    ) -> None:
+        """Clear learned data, samples, wait, and unmeasurable flag for one consumer switch."""
+        async with self._lock:
+            if fingerprint != self._runtime.fingerprint:
+                return
+            self._runtime.metrics.pop(consumer_entity_id, None)
+            self._runtime.learn_source.pop(consumer_entity_id, None)
+            self._runtime.unmeasurable.discard(consumer_entity_id)
+            self._runtime.house_delta_samples.pop(consumer_entity_id, None)
+            self._house_delta_wait.pop(consumer_entity_id, None)
+            self._runtime.expected_kwh_sum.pop(consumer_entity_id, None)
+            self._runtime.expected_seconds.pop(consumer_entity_id, None)
+            self._runtime.active_kwh_sum.pop(consumer_entity_id, None)
+            self._runtime.active_seconds.pop(consumer_entity_id, None)
             await self._store.async_save(self._persist_dict())
 
     def _ensure_metric(self, entity_id: str) -> dict[str, float]:
@@ -334,8 +348,7 @@ class ConsumerLearner:
                 return
             if consumer_entity_id in self._runtime.metrics:
                 return
-            if consumer_entity_id in self._runtime.unmeasurable:
-                return
+            self._runtime.unmeasurable.discard(consumer_entity_id)
             now = dt_util.utcnow()
             guard = max(0.5, float(CONSUMER_HOUSE_DELTA_MIN_GUARD_SEC))
             fb = max(guard + 1.0, float(CONSUMER_HOUSE_DELTA_FALLBACK_SEC))

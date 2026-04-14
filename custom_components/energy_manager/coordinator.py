@@ -797,9 +797,6 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     learned_target=learned_target,
                     discharge_headroom_kw=budget_ceilings.discharge_kw,
                     marginal_battery_per_kw=marginal,
-                    unmeasurable_entity_ids=set(
-                        self.consumer_learner.get_unmeasurable()
-                    ),
                 )
 
             m_dis_ceiling = max(
@@ -920,6 +917,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 wasting_context=wasting_context,
                 suppress_wasting_turn_ons=decision.suppress_wasting_turn_ons,
                 decision_context=decision_context,
+                consumer_learned_kw=self.consumer_learner.get_learned_kw(),
             )
             house_ent_id = self._entity_ids.get("house")
             house_sensor_configured = isinstance(house_ent_id, str) and bool(

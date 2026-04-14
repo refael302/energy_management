@@ -24,6 +24,7 @@ from ..const import (
     CONSUMER_BUDGET_MARGIN_MEDIUM_CAP_KW,
     CONSUMER_BUDGET_MARGIN_NEG_CAP_KW,
     CONSUMER_DISCHARGE_HEADROOM_SAFETY_KW,
+    CONSUMER_UNLEARNED_ASSUMED_KW,
     DISCHARGE_HEADROOM_FRACTION,
     MIN_EFFECTIVE_MAX_BATTERY_POWER_KW,
     MARGIN_HIGH_THRESHOLD,
@@ -236,21 +237,18 @@ def next_unlearned_for_sampling(
     *,
     discharge_headroom_kw: float,
     marginal_battery_per_kw: float,
-    min_headroom_for_unknown_kw: float = 0.5,
-    unmeasurable_entity_ids: set[str] | None = None,
+    min_headroom_for_unknown_kw: float = CONSUMER_UNLEARNED_ASSUMED_KW,
 ) -> str | None:
     """
     First (priority) consumer that is off, not learned, not already targeted for turn-on.
-    Skip if battery discharge headroom is below min (unknown load risk).
+    Skip if battery discharge headroom is below min (unknown load risk; default assumes
+    CONSUMER_UNLEARNED_ASSUMED_KW per unlearned consumer).
     """
     m = max(0.0, min(1.0, marginal_battery_per_kw))
     if m >= 0.99 and discharge_headroom_kw < min_headroom_for_unknown_kw:
         return None
-    unmeas = unmeasurable_entity_ids or set()
     for eid in consumers_ordered:
         if eid in learned_kw:
-            continue
-        if eid in unmeas:
             continue
         if eid in on_targets:
             continue
