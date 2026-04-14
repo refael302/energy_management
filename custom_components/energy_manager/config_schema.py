@@ -18,7 +18,9 @@ from .const import (
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_POWER_SENSOR,
     CONF_BATTERY_SOC_SENSOR,
+    CONF_CONSUMERS,
     CONF_CONSUMER_SWITCHES,
+    CONF_CONSUMER_SWITCH_ENTITY_ID,
     CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
     CONF_FORECAST_PR,
     CONF_HOUSE_CONSUMPTION_SENSOR,
@@ -105,6 +107,24 @@ def list_or_empty(val: Any) -> list[str]:
     return [val] if val else []
 
 
+def _consumer_switch_defaults(merged: dict[str, Any]) -> list[str]:
+    """Return default consumer switches from either legacy or current config shape."""
+    direct = list_or_empty(merged.get(CONF_CONSUMER_SWITCHES))
+    if direct:
+        return direct
+    raw_consumers = merged.get(CONF_CONSUMERS)
+    if not isinstance(raw_consumers, list):
+        return []
+    out: list[str] = []
+    for item in raw_consumers:
+        if not isinstance(item, dict):
+            continue
+        entity_id = item.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
+        if isinstance(entity_id, str) and entity_id:
+            out.append(entity_id)
+    return out
+
+
 def _home_lat_lon(hass: HomeAssistant) -> tuple[float, float]:
     try:
         return float(hass.config.latitude), float(hass.config.longitude)
@@ -149,7 +169,7 @@ def main_params_schema_minimal(
             ): sensor_selector(),
             vol.Required(
                 CONF_CONSUMER_SWITCHES,
-                default=list_or_empty(merged.get(CONF_CONSUMER_SWITCHES)),
+                default=_consumer_switch_defaults(merged),
             ): consumer_entity_selector(),
             vol.Required(
                 CONF_BATTERY_CAPACITY,
