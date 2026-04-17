@@ -144,6 +144,9 @@ class LoadManager:
         self._last_emergency_saving_bulk_utc: datetime | None = None
         # Wasting: next consumer index to consider for turn-on (strict list order, wraps).
         self._wasting_turn_on_cursor: int = 0
+        # Wasting session guard: consumers manually turned off while in wasting are
+        # blocked from auto turn-on until the next wasting entry.
+        self._wasting_manual_off_blocked: set[str] = set()
 
     async def _log_action(
         self,
@@ -276,6 +279,7 @@ class LoadManager:
         self._integration_turn_on_eids_this_apply.clear()
         if system_mode != SYSTEM_MODE_WASTING:
             self._wasting_turn_on_cursor = 0
+            self._wasting_manual_off_blocked.clear()
         if system_mode != SYSTEM_MODE_EMERGENCY_SAVING:
             self._last_emergency_saving_bulk_utc = None
         consumers = self._consumer_entity_ids(self.consumer_entity_ids)
@@ -542,6 +546,7 @@ class LoadManager:
         learned_kw = ctx.learned_kw
         ordered = ctx.consumers_ordered
         target = ctx.learned_target
+        self._remember_manual_offs_in_wasting_session()
 
         def is_on(eid: str) -> bool:
             """True only for a definite HA on state; unavailable/unknown are not 'on'."""
@@ -590,6 +595,8 @@ class LoadManager:
             eid = ordered[idx]
             reason_code = self._wasting_turn_on_reason_code(eid, ctx, learned_kw)
             if reason_code is None:
+                continue
+            if eid in self._wasting_manual_off_blocked:
                 continue
             on_off = self._consumer_on_or_off(eid)
             if on_off == "on":
@@ -654,6 +661,15 @@ class LoadManager:
             return
         if not acted:
             self._wasting_turn_on_cursor = (start + 1) % n
+
+    def _remember_manual_offs_in_wasting_session(self) -> None:
+        """
+        Track consumers that were integration-managed in wasting and are now off.
+        This is treated as a manual off intent; keep them blocked until wasting exits.
+        """
+        for eid in self.state.consumers_turned_on_by_wasting:
+            if self._consumer_on_or_off(eid) == "off":
+                self._wasting_manual_off_blocked.add(eid)
 
     async def _apply_wasting_fallback(
         self,
