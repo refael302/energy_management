@@ -1,6 +1,9 @@
 """
 Load manager – ACTIONS: turn on/off consumer switches (and optional lights) by priority.
-Wasting mode uses learned consumer budget from coordinator (greedy target set), with
+Wasting mode uses learned consumer budget from coordinator (greedy target set by list order),
+with turn-on attempts advancing strictly along the user list (round-robin cursor): each tick
+scans forward from the cursor, skipping ineligible / unavailable / already-on consumers until
+one turn-on is issued or the list is exhausted once.
 1 min between actions for learned entities and 5 min for unlearned (learning path).
 After the integration turns a consumer on, it is not turned off again until
 CONSUMER_MIN_ON_MINUTES (learned) or CONSUMER_MIN_ON_UNLEARNED_MINUTES have elapsed
@@ -19,12 +22,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
     CONSUMER_ACTION_DELAY_LEARNED_MINUTES,
     CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
     CONSUMER_MIN_ON_MINUTES,
     CONSUMER_MIN_ON_UNLEARNED_MINUTES,
+    CONSUMER_UNLEARNED_ASSUMED_KW,
     DISCHARGE_SHED_COOLDOWN_SEC,
     SYSTEM_MODE_EMERGENCY_SAVING,
     SYSTEM_MODE_SAVING,
@@ -32,7 +37,6 @@ from ..const import (
 )
 from ..decision_context import DecisionContext
 from ..integration_log import async_log_event
-from .consumer_budget import next_unlearned_for_sampling
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,7 +87,11 @@ SUPER_SAVING_TURN_OFF_DOMAINS = ("light", "switch", "input_boolean", "fan")
 
 @dataclass
 class WastingContext:
-    """Budget-driven wasting session from coordinator (one update tick)."""
+    """Budget-driven wasting session from coordinator (one update tick).
+
+    learned_target is built greedily in config order by select_learned_consumers; the load
+    manager advances turn-on attempts in that same order (see _wasting_turn_on_cursor).
+    """
 
     consumers_ordered: list[str]
     learned_kw: dict[str, float]
@@ -101,7 +109,8 @@ class LoadManagerState:
 
 class LoadManager:
     """
-    - wasting: match switch states to learned_target + optional unlearned learning path.
+    - wasting: match switch states to learned_target + unlearned slots; turn-ons advance
+      strictly along consumers_ordered (round-robin), not always from the head of the list.
     - normal: turn off one consumer per user delay_minutes (LIFO, integration-managed list).
     - saving: turn off all consumer switches (and optional lights when super_saving).
     discharge_over_limit: turn off one on-consumer if any; log when none to turn off.
@@ -133,6 +142,8 @@ class LoadManager:
         # Anti-flap: after discharge-ceiling shed, block re-turn-on for DISCHARGE_SHED_COOLDOWN_SEC.
         self._discharge_shed_until_utc: dict[str, datetime] = {}
         self._last_emergency_saving_bulk_utc: datetime | None = None
+        # Wasting: next consumer index to consider for turn-on (strict list order, wraps).
+        self._wasting_turn_on_cursor: int = 0
 
     async def _log_action(
         self,
@@ -256,12 +267,15 @@ class LoadManager:
     ) -> None:
         """
         Apply actions for the given system mode.
-        wasting_context: when mode is wasting, carries greedy learned_target and discharge hints.
+        wasting_context: when mode is wasting, carries greedy learned_target, discharge hints,
+        and consumers_ordered; turn-ons advance in list order via an internal round-robin cursor.
         suppress_wasting_turn_ons: when True, still allow wasting turn-offs but no new turn-ons.
         apply_saving_bulk: when False, saving/emergency_saving skip consumer/super-saving bulk (coordinator).
         decision_context: per-tick snapshot from coordinator for ACTION logs (required when logging).
         """
         self._integration_turn_on_eids_this_apply.clear()
+        if system_mode != SYSTEM_MODE_WASTING:
+            self._wasting_turn_on_cursor = 0
         if system_mode != SYSTEM_MODE_EMERGENCY_SAVING:
             self._last_emergency_saving_bulk_utc = None
         consumers = self._consumer_entity_ids(self.consumer_entity_ids)
@@ -501,6 +515,19 @@ class LoadManager:
         if record_emergency_bulk_time:
             self._last_emergency_saving_bulk_utc = datetime.now(timezone.utc)
 
+    def _wasting_turn_on_reason_code(
+        self, entity_id: str, ctx: WastingContext, learned_kw: dict[str, float]
+    ) -> str | None:
+        """Return log reason for a wasting turn-on, or None if this entity must not be turned on."""
+        if entity_id in learned_kw:
+            if entity_id in ctx.learned_target:
+                return "wasting_target"
+            return None
+        m = max(0.0, min(1.0, ctx.marginal_battery_per_kw))
+        if m >= 0.99 and ctx.discharge_headroom_kw < CONSUMER_UNLEARNED_ASSUMED_KW:
+            return None
+        return "wasting_learn_path"
+
     async def _apply_wasting_budget(
         self,
         ctx: WastingContext,
@@ -553,20 +580,15 @@ class LoadManager:
         if suppress_turn_ons:
             return
 
-        candidate = next_unlearned_for_sampling(
-            ordered,
-            learned_kw,
-            target,
-            discharge_headroom_kw=ctx.discharge_headroom_kw,
-            marginal_battery_per_kw=ctx.marginal_battery_per_kw,
-        )
-        for eid in ordered:
-            reason_code: str | None = None
-            if eid in learned_kw:
-                if eid in target:
-                    reason_code = "wasting_target"
-            elif candidate is not None and eid == candidate:
-                reason_code = "wasting_learn_path"
+        n = len(ordered)
+        if n == 0:
+            return
+        start = self._wasting_turn_on_cursor % n
+        acted = False
+        for k in range(n):
+            idx = (start + k) % n
+            eid = ordered[idx]
+            reason_code = self._wasting_turn_on_reason_code(eid, ctx, learned_kw)
             if reason_code is None:
                 continue
             on_off = self._consumer_on_or_off(eid)
@@ -574,15 +596,47 @@ class LoadManager:
                 continue
             if on_off != "off":
                 self._debug_skip_consumer_not_on_off(eid)
+                self._wasting_turn_on_cursor = (idx + 1) % n
                 continue
             if self._is_under_discharge_shed_cooldown(eid, now_utc=now_utc):
                 continue
             if not self._can_turn_on_after_delay(eid, learned_kw):
                 continue
-            await self._turn_on_consumer(eid)
+            try:
+                await self._turn_on_consumer(eid)
+            except (HomeAssistantError, OSError, TimeoutError) as err:
+                _LOGGER.warning("Wasting: turn_on failed for %s: %s", eid, err)
+                self._wasting_turn_on_cursor = (idx + 1) % n
+                if decision_context is not None:
+                    await self._log_action(
+                        "WARN",
+                        "consumer_turn_on_failed",
+                        f"Turn on {eid} failed | wasting_order | {err}"[:200],
+                        decision_context.merge_action_context(
+                            reason_code="wasting_turn_on_failed", entity_id=eid
+                        ),
+                    )
+                continue
+            if not is_on(eid):
+                _LOGGER.warning(
+                    "Wasting: turn_on did not result in on state for %s", eid
+                )
+                self._wasting_turn_on_cursor = (idx + 1) % n
+                if decision_context is not None:
+                    await self._log_action(
+                        "WARN",
+                        "consumer_turn_on_no_effect",
+                        f"Turn on {eid} had no effect | wasting_order | mode=wasting"[:200],
+                        decision_context.merge_action_context(
+                            reason_code="wasting_turn_on_no_effect", entity_id=eid
+                        ),
+                    )
+                continue
             self._append_managed(eid)
             self._last_turn_on_time = datetime.now(timezone.utc)
             self._last_turn_on_delay_sec = self._delay_seconds_for_entity(eid, learned_kw)
+            self._wasting_turn_on_cursor = (idx + 1) % n
+            acted = True
             _LOGGER.debug("Wasting budget: turned on %s (%s)", eid, reason_code)
             if decision_context is not None:
                 await self._log_action(
@@ -598,6 +652,8 @@ class LoadManager:
             if self._schedule_consumer_learn:
                 self._schedule_consumer_learn(eid)
             return
+        if not acted:
+            self._wasting_turn_on_cursor = (start + 1) % n
 
     async def _apply_wasting_fallback(
         self,
