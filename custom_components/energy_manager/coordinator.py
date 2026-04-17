@@ -308,6 +308,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._ops_prev_system_mode: str | None = None
         self._ops_prev_strategy: str | None = None
         self._ops_log_heartbeat_date: date | None = None
+        self._ops_daily_summary_date: date | None = None
         self._dwell_committed_mode: str | None = None
         self._dwell_mode_changed_at: datetime | None = None
         self._integration_alerts: deque[dict[str, Any]] = deque(maxlen=INTEGRATION_ALERTS_MAX)
@@ -1175,6 +1176,47 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 stats_fc_vs_actual_delta_kwh = None
                 stats_pv_forecast_shortfall_kwh = None
+
+            now_local_for_log = dt_util.as_local(now_local_stats)
+            log_day = now_local_for_log.date()
+            if (
+                now_local_for_log.hour == 23
+                and now_local_for_log.minute == 59
+                and self._ops_daily_summary_date != log_day
+            ):
+                self._ops_daily_summary_date = log_day
+                await async_log_event(
+                    self.hass,
+                    self.entry.entry_id,
+                    "INFO",
+                    "SYSTEM",
+                    "integration_daily_summary",
+                    (
+                        "Daily summary: "
+                        f"PV={stats_pv_today_kwh} kWh, "
+                        f"House={round(self._daily_energy.house_kwh, 3)} kWh, "
+                        f"Battery discharge={round(self._daily_energy.battery_discharge_kwh, 3)} kWh, "
+                        f"Wasting consumers={round(self._daily_energy.wasting_consumer_kwh, 3)} kWh"
+                    ),
+                    {
+                        "reason_code": "daily_summary_2359",
+                        "tick_id": tick_id,
+                        "system_mode": decision.system_mode,
+                        "strategy_recommendation": decision.strategy_recommendation,
+                        "daily_margin_kwh": round(float(self.model.daily_margin_kwh), 3),
+                        "stats_solar_energy_today_kwh": stats_pv_today_kwh,
+                        "stats_house_consumption_energy_today_kwh": round(
+                            self._daily_energy.house_kwh, 3
+                        ),
+                        "stats_battery_discharge_energy_today_kwh": round(
+                            self._daily_energy.battery_discharge_kwh, 3
+                        ),
+                        "stats_wasting_consumer_energy_today_kwh": round(
+                            self._daily_energy.wasting_consumer_kwh, 3
+                        ),
+                    },
+                    integration_alerts=False,
+                )
 
             today_local_hb = dt_util.as_local(now_local_stats).date()
             if self._ops_log_heartbeat_date != today_local_hb:
