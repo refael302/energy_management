@@ -36,6 +36,9 @@ from .consumer_budget import next_unlearned_for_sampling
 
 _LOGGER = logging.getLogger(__name__)
 
+# Consumer switches / input_booleans: only act when HA reports a definite on/off.
+_NON_ACTIONABLE_SKIP_LOG = "Skipping consumer %s - state is %s"
+
 
 def _action_summary_bulk_consumers_off(
     decision_context: DecisionContext, *, count: int, reason_code: str
@@ -228,8 +231,8 @@ class LoadManager:
             return
         state = self.hass.states.get(entity_id)
         was_off = state is None or state.state != "on"
-        await self._call_turn_on(entity_id)
-        if was_off:
+        invoked = await self._call_turn_on(entity_id)
+        if invoked and was_off:
             self._integration_turn_on_at_utc[entity_id] = datetime.now(timezone.utc)
             self._integration_turn_on_eids_this_apply.append(entity_id)
 
@@ -307,16 +310,35 @@ class LoadManager:
         d = entity_id.split(".", 1)[0] if "." in entity_id else ""
         return d if d in CONSUMER_DOMAINS else None
 
-    async def _call_turn_on(self, entity_id: str) -> None:
+    def _consumer_on_or_off(self, entity_id: str) -> str | None:
+        """Return 'on', 'off', or None if missing or not a definite on/off (unavailable, unknown, …)."""
+        st = self.hass.states.get(entity_id)
+        if st is None:
+            return None
+        if st.state in ("on", "off"):
+            return st.state
+        return None
+
+    def _debug_skip_consumer_not_on_off(self, entity_id: str) -> None:
+        st = self.hass.states.get(entity_id)
+        label = st.state if st is not None else "missing"
+        _LOGGER.debug(_NON_ACTIONABLE_SKIP_LOG, entity_id, label)
+
+    async def _call_turn_on(self, entity_id: str) -> bool:
+        """Call turn_on unless already on or state is not on/off. Returns True if service was invoked."""
         domain = self._domain(entity_id)
         if not domain:
-            return
+            return False
         state = self.hass.states.get(entity_id)
         if state is not None and state.state == "on":
-            return
+            return False
+        if state is None or state.state not in ("on", "off"):
+            self._debug_skip_consumer_not_on_off(entity_id)
+            return False
         await self.hass.services.async_call(
             domain, "turn_on", {"entity_id": entity_id}, blocking=True
         )
+        return True
 
     async def _call_turn_off(self, entity_ids: list[str]) -> list[str]:
         """Call turn_off for each entity using its domain (switch or input_boolean).
@@ -335,7 +357,7 @@ class LoadManager:
             if not domain:
                 continue
             state = self.hass.states.get(eid)
-            if state is None or state.state == "off":
+            if state is None or state.state != "on":
                 continue
             by_domain.setdefault(domain, []).append(eid)
             turned_off.append(eid)
@@ -418,7 +440,7 @@ class LoadManager:
         for eid in filtered:
             domain = eid.split(".", 1)[0]
             state = self.hass.states.get(eid)
-            if state is None or state.state == "off":
+            if state is None or state.state != "on":
                 continue
             by_domain.setdefault(domain, []).append(eid)
             turned_off.append(eid)
@@ -495,8 +517,8 @@ class LoadManager:
         target = ctx.learned_target
 
         def is_on(eid: str) -> bool:
-            st = self.hass.states.get(eid)
-            return st is not None and st.state == "on"
+            """True only for a definite HA on state; unavailable/unknown are not 'on'."""
+            return self._consumer_on_or_off(eid) == "on"
 
         rev = list(reversed(ordered))
         for eid in rev:
@@ -531,12 +553,27 @@ class LoadManager:
         if suppress_turn_ons:
             return
 
+        candidate = next_unlearned_for_sampling(
+            ordered,
+            learned_kw,
+            target,
+            discharge_headroom_kw=ctx.discharge_headroom_kw,
+            marginal_battery_per_kw=ctx.marginal_battery_per_kw,
+        )
         for eid in ordered:
-            if eid not in learned_kw:
+            reason_code: str | None = None
+            if eid in learned_kw:
+                if eid in target:
+                    reason_code = "wasting_target"
+            elif candidate is not None and eid == candidate:
+                reason_code = "wasting_learn_path"
+            if reason_code is None:
                 continue
-            if eid not in target:
+            on_off = self._consumer_on_or_off(eid)
+            if on_off == "on":
                 continue
-            if is_on(eid):
+            if on_off != "off":
+                self._debug_skip_consumer_not_on_off(eid)
                 continue
             if self._is_under_discharge_shed_cooldown(eid, now_utc=now_utc):
                 continue
@@ -546,57 +583,21 @@ class LoadManager:
             self._append_managed(eid)
             self._last_turn_on_time = datetime.now(timezone.utc)
             self._last_turn_on_delay_sec = self._delay_seconds_for_entity(eid, learned_kw)
-            _LOGGER.debug("Wasting budget: turned on %s (target)", eid)
+            _LOGGER.debug("Wasting budget: turned on %s (%s)", eid, reason_code)
             if decision_context is not None:
                 await self._log_action(
                     "INFO",
                     "consumer_turned_on",
                     _action_summary_entity_on(
-                        decision_context, eid, "wasting_target"
+                        decision_context, eid, reason_code
                     ),
                     decision_context.merge_action_context(
-                        reason_code="wasting_target", entity_id=eid
+                        reason_code=reason_code, entity_id=eid
                     ),
                 )
             if self._schedule_consumer_learn:
                 self._schedule_consumer_learn(eid)
             return
-
-        candidate = next_unlearned_for_sampling(
-            ordered,
-            learned_kw,
-            target,
-            discharge_headroom_kw=ctx.discharge_headroom_kw,
-            marginal_battery_per_kw=ctx.marginal_battery_per_kw,
-        )
-        if candidate and not is_on(candidate):
-            if not self._is_under_discharge_shed_cooldown(candidate, now_utc=now_utc):
-                if self._can_turn_on_after_delay(candidate, learned_kw):
-                    await self._turn_on_consumer(candidate)
-                    self._append_managed(candidate)
-                    self._last_turn_on_time = datetime.now(timezone.utc)
-                    self._last_turn_on_delay_sec = self._delay_seconds_for_entity(
-                        candidate, learned_kw
-                    )
-                    _LOGGER.debug(
-                        "Wasting budget: turned on %s (learn path)", candidate
-                    )
-                    if decision_context is not None:
-                        await self._log_action(
-                            "INFO",
-                            "consumer_turned_on",
-                            _action_summary_entity_on(
-                                decision_context,
-                                candidate,
-                                "wasting_learn_path",
-                            ),
-                            decision_context.merge_action_context(
-                                reason_code="wasting_learn_path",
-                                entity_id=candidate,
-                            ),
-                        )
-                    if self._schedule_consumer_learn:
-                        self._schedule_consumer_learn(candidate)
 
     async def _apply_wasting_fallback(
         self,
@@ -615,31 +616,35 @@ class LoadManager:
         ):
             return
         for entity_id in consumers:
-            state = self.hass.states.get(entity_id)
-            if state and state.state != "on":
-                if not self._domain(entity_id):
-                    continue
-                await self._turn_on_consumer(entity_id)
-                self._last_turn_on_time = datetime.now(timezone.utc)
-                self._last_turn_on_delay_sec = self._delay_seconds_for_entity(
-                    entity_id, learned_kw
+            if not self._domain(entity_id):
+                continue
+            on_off = self._consumer_on_or_off(entity_id)
+            if on_off == "on":
+                continue
+            if on_off != "off":
+                self._debug_skip_consumer_not_on_off(entity_id)
+                continue
+            await self._turn_on_consumer(entity_id)
+            self._last_turn_on_time = datetime.now(timezone.utc)
+            self._last_turn_on_delay_sec = self._delay_seconds_for_entity(
+                entity_id, learned_kw
+            )
+            self._append_managed(entity_id)
+            _LOGGER.debug("Turned on consumer (fallback): %s", entity_id)
+            if decision_context is not None:
+                await self._log_action(
+                    "INFO",
+                    "consumer_turned_on",
+                    _action_summary_entity_on(
+                        decision_context, entity_id, "wasting_fallback"
+                    ),
+                    decision_context.merge_action_context(
+                        reason_code="wasting_fallback", entity_id=entity_id
+                    ),
                 )
-                self._append_managed(entity_id)
-                _LOGGER.debug("Turned on consumer (fallback): %s", entity_id)
-                if decision_context is not None:
-                    await self._log_action(
-                        "INFO",
-                        "consumer_turned_on",
-                        _action_summary_entity_on(
-                            decision_context, entity_id, "wasting_fallback"
-                        ),
-                        decision_context.merge_action_context(
-                            reason_code="wasting_fallback", entity_id=entity_id
-                        ),
-                    )
-                if self._schedule_consumer_learn:
-                    self._schedule_consumer_learn(entity_id)
-                return
+            if self._schedule_consumer_learn:
+                self._schedule_consumer_learn(entity_id)
+            return
 
     async def discharge_over_limit_turn_off_one(
         self,
