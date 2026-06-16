@@ -17,6 +17,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from .consumer_cycle import (
+    filter_cycle_active_consumers,
+    get_consumer_cycle_enabled_map,
+    is_consumer_cycle_enabled,
+)
 from .engine.baseline_profile_learn import (
     BaselineProfileLearner,
     residual_house_kw,
@@ -474,6 +479,10 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for c in consumers_cfg
                 if c.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
             ]
+            cycle_enabled_map = get_consumer_cycle_enabled_map(current_config)
+            cycle_active_consumer_ids = filter_cycle_active_consumers(
+                consumer_entity_ids, cycle_enabled_map
+            )
             consumer_power_kw: dict[str, float | None] = {}
             consumer_has_sensor: dict[str, bool] = {}
             actual_on_map: dict[str, bool | None] = {}
@@ -754,7 +763,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if budget_updated:
                     self._locked_consumer_budget_kw = effective_budget_kw
                 learned_map = self.consumer_learner.get_learned_kw()
-                consumer_list = consumer_entity_ids
+                consumer_list = cycle_active_consumer_ids
                 learned_target = select_learned_consumers(
                     consumer_list,
                     learned_map,
@@ -910,6 +919,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
 
             house_kw_before_load_actions = self.model.house_consumption_kw
+            cycle_disabled = frozenset(
+                eid
+                for eid in consumer_entity_ids
+                if not is_consumer_cycle_enabled(eid, cycle_enabled_map)
+            )
             await self.load_manager.apply_mode(
                 decision.system_mode,
                 super_saving=super_saving,
@@ -919,6 +933,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 suppress_wasting_turn_ons=decision.suppress_wasting_turn_ons,
                 decision_context=decision_context,
                 consumer_learned_kw=self.consumer_learner.get_learned_kw(),
+                cycle_disabled=cycle_disabled,
             )
             house_ent_id = self._entity_ids.get("house")
             house_sensor_configured = isinstance(house_ent_id, str) and bool(
@@ -1005,6 +1020,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 consumers_details[eid] = {
                     "expected_on": expected_on,
                     "actual_on": actual,
+                    "cycle_enabled": is_consumer_cycle_enabled(eid, cycle_enabled_map),
                     "power_kw": round(float(p_kw), 4) if p_kw is not None else None,
                     "energy_today_kwh": metrics.get("energy_per_hour_latest_kwh"),
                     "has_power_sensor": bool(consumer_has_sensor.get(eid)),

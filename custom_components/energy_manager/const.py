@@ -188,6 +188,7 @@ CONF_MAX_BATTERY_CHARGE_POWER_KW = "max_battery_charge_power_kw"
 CONF_MANUAL_OVERRIDE = "manual_override"  # legacy: when True, both overrides on
 CONF_MANUAL_MODE_OVERRIDE = "manual_mode_override"
 CONF_MANUAL_STRATEGY_OVERRIDE = "manual_strategy_override"
+CONF_CONSUMER_CYCLE_ENABLED = "consumer_cycle_enabled"
 CONF_MANUAL_MODE = "manual_mode"
 CONF_MANUAL_STRATEGY = "manual_strategy"
 CONF_LIGHTS_TO_TURN_OFF = "lights_to_turn_off"
