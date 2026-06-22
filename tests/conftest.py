@@ -62,6 +62,40 @@ def _ensure_energy_manager_pkg() -> None:
         "energy_manager.engine.policy.arbiter",
         eng_root / "policy" / "arbiter.py",
     )
+    _ensure_telegram_bridge_mocks()
+    load_file("energy_manager.telegram_messages", em_root / "telegram_messages.py")
+    load_file("energy_manager.telegram_bridge", em_root / "telegram_bridge.py")
+
+
+def _ensure_telegram_bridge_mocks() -> None:
+    if "homeassistant.core" in sys.modules:
+        return
+    ha = ModuleType("homeassistant")
+    ha_core = ModuleType("homeassistant.core")
+
+    class HomeAssistant:  # noqa: D101
+        pass
+
+    ha_core.HomeAssistant = HomeAssistant
+    sys.modules["homeassistant"] = ha
+    sys.modules["homeassistant.core"] = ha_core
+
+    aiohttp_mod = ModuleType("aiohttp")
+
+    class ClientSession:  # noqa: D101
+        pass
+
+    class ClientError(Exception):  # noqa: D101
+        pass
+
+    class ClientTimeout:  # noqa: D101
+        def __init__(self, total: float = 0) -> None:
+            self.total = total
+
+    aiohttp_mod.ClientSession = ClientSession
+    aiohttp_mod.ClientError = ClientError
+    aiohttp_mod.ClientTimeout = ClientTimeout
+    sys.modules["aiohttp"] = aiohttp_mod
 
 
 _ensure_energy_manager_pkg()

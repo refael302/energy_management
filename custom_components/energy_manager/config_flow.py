@@ -31,6 +31,9 @@ from .const import (
     CONF_SYSTEM_SIZE_KW,
     CONF_TILT,
     CONF_TELEGRAM_BOT_TOKEN,
+    CONF_TELEGRAM_CHAT_IDS,
+    CONF_TELEGRAM_ENABLED,
+    CONF_TELEGRAM_NOTIFY_MODE,
     DEFAULT_AZIMUTH,
     DEFAULT_SYSTEM_SIZE_KW,
     DEFAULT_TILT,
@@ -235,14 +238,27 @@ class EnergyManagerOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         merged = self._merged_config()
         if user_input is not None:
             data = dict(user_input)
+            enabled = bool(data.get(CONF_TELEGRAM_ENABLED))
+            chat_ids = str(data.get(CONF_TELEGRAM_CHAT_IDS) or "").strip()
             tok = str(data.get(CONF_TELEGRAM_BOT_TOKEN, "")).strip()
+            prev_tok = str(merged.get(CONF_TELEGRAM_BOT_TOKEN) or "").strip()
+            errors: dict[str, str] = {}
+            if enabled and not chat_ids:
+                errors["telegram_chat_ids"] = "required"
+            if enabled and not tok and not prev_tok:
+                errors["telegram_bot_token"] = "required"
+            if errors:
+                return self.async_show_form(
+                    step_id="telegram",
+                    data_schema=telegram_options_schema(merged),
+                    errors=errors,
+                )
             if tok:
                 data[CONF_TELEGRAM_BOT_TOKEN] = tok
             else:
                 data.pop(CONF_TELEGRAM_BOT_TOKEN, None)
-                prev = merged.get(CONF_TELEGRAM_BOT_TOKEN)
-                if prev:
-                    data[CONF_TELEGRAM_BOT_TOKEN] = prev
+                if prev_tok:
+                    data[CONF_TELEGRAM_BOT_TOKEN] = prev_tok
             new_cfg = {**merged, **data}
             return self.async_create_entry(data=new_cfg)
         return self.async_show_form(

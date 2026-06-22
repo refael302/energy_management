@@ -23,15 +23,25 @@ from .const import (
     CONF_TELEGRAM_ENABLED,
     CONF_TELEGRAM_EVENTS_DENYLIST,
     CONF_TELEGRAM_MIN_INTERVAL_SEC,
+    CONF_TELEGRAM_NOTIFY_MODE,
     CONF_TELEGRAM_OUT_CATEGORIES,
     CONF_TELEGRAM_OUT_LEVELS,
     DATA_INTEGRATION_ALERT_LAST,
     DOMAIN,
     OPS_LOG_CATEGORIES,
     OPS_LOG_LEVELS,
+    SYSTEM_MODE_EMERGENCY_SAVING,
+    TELEGRAM_BURST_MAX_MESSAGES,
+    TELEGRAM_BURST_WINDOW_SEC,
+    TELEGRAM_DEFAULT_DENY_EVENTS,
     TELEGRAM_MESSAGE_MAX_LEN,
+    TELEGRAM_NOTIFY_ALL,
+    TELEGRAM_NOTIFY_EMERGENCY,
+    TELEGRAM_NOTIFY_MODES,
     TELEGRAM_POLL_IDLE_SEC,
 )
+
+from .telegram_messages import format_telegram_alert
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +49,15 @@ TELEGRAM_API = "https://api.telegram.org"
 
 # (entry_id, fingerprint) -> last monotonic time sent
 _telegram_last_sent_mono: dict[tuple[str, tuple[Any, ...]], float] = {}
+# entry_id -> monotonic send times (burst window)
+_telegram_burst_times: dict[str, list[float]] = {}
+
+_EMERGENCY_INFO_EVENTS = frozenset(
+    {
+        "discharge_state_max_entered",
+        "coordinator_update_failed",
+    }
+)
 
 
 def _merged_entry_config(hass: HomeAssistant, entry_id: str) -> dict[str, Any]:
@@ -46,6 +65,13 @@ def _merged_entry_config(hass: HomeAssistant, entry_id: str) -> dict[str, Any]:
     if entry is None:
         return {}
     return {**entry.data, **(entry.options or {})}
+
+
+def _resolve_notify_mode(cfg: dict[str, Any]) -> str | None:
+    raw = cfg.get(CONF_TELEGRAM_NOTIFY_MODE)
+    if raw in TELEGRAM_NOTIFY_MODES:
+        return str(raw)
+    return None
 
 
 def _telegram_settings(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -58,15 +84,21 @@ def _telegram_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         levels = list(OPS_LOG_LEVELS)
     levels_set = {str(l).upper() for l in levels}
     deny_raw = str(cfg.get(CONF_TELEGRAM_EVENTS_DENYLIST) or "").strip()
-    deny = {p.strip().lower() for p in deny_raw.split(",") if p.strip()}
+    deny = TELEGRAM_DEFAULT_DENY_EVENTS | {
+        p.strip().lower() for p in deny_raw.split(",") if p.strip()
+    }
     try:
         min_iv = float(cfg.get(CONF_TELEGRAM_MIN_INTERVAL_SEC, 0) or 0)
     except (TypeError, ValueError):
         min_iv = 0.0
+    notify_mode = _resolve_notify_mode(cfg)
+    if notify_mode is None and levels_set <= {"WARN", "ERROR"}:
+        notify_mode = TELEGRAM_NOTIFY_EMERGENCY
     return {
         "enabled": bool(cfg.get(CONF_TELEGRAM_ENABLED)),
         "token": str(cfg.get(CONF_TELEGRAM_BOT_TOKEN) or "").strip(),
         "chat_ids": _parse_chat_ids(str(cfg.get(CONF_TELEGRAM_CHAT_IDS) or "")),
+        "notify_mode": notify_mode or TELEGRAM_NOTIFY_ALL,
         "categories": cats_set,
         "levels": levels_set,
         "deny_events": deny,
@@ -98,15 +130,47 @@ def _alert_fingerprint(rec: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def _record_context(rec: dict[str, Any]) -> dict[str, Any]:
+    ctx = rec.get("context")
+    return ctx if isinstance(ctx, dict) else {}
+
+
+def is_emergency_alert(rec: dict[str, Any]) -> bool:
+    """True for WARN/ERROR and critical INFO (emergency mode, discharge, failures)."""
+    level = str(rec.get("level", "")).upper()
+    if level in ("WARN", "ERROR"):
+        return True
+    event = str(rec.get("event", "")).lower()
+    if event in _EMERGENCY_INFO_EVENTS:
+        return True
+    ctx = _record_context(rec)
+    to_mode = str(ctx.get("to_mode", "")).lower()
+    from_mode = str(ctx.get("from_mode", "")).lower()
+    if event == "system_mode_changed" and (
+        to_mode == SYSTEM_MODE_EMERGENCY_SAVING
+        or from_mode == SYSTEM_MODE_EMERGENCY_SAVING
+    ):
+        return True
+    reason = str(ctx.get("reason_code", "")).lower()
+    if reason in ("discharge_over_limit", "discharge_max", "exception"):
+        return True
+    return False
+
+
 def _passes_filters(rec: dict[str, Any], st: dict[str, Any]) -> bool:
+    event = str(rec.get("event", "")).lower()
+    if event and event in st["deny_events"]:
+        return False
+    notify_mode = st.get("notify_mode", TELEGRAM_NOTIFY_ALL)
+    if notify_mode == TELEGRAM_NOTIFY_EMERGENCY:
+        return is_emergency_alert(rec)
+    if notify_mode == TELEGRAM_NOTIFY_ALL:
+        return True
     level = str(rec.get("level", "")).upper()
     category = str(rec.get("category", "")).upper()
-    event = str(rec.get("event", "")).lower()
     if level not in st["levels"]:
         return False
     if category not in st["categories"]:
-        return False
-    if event and event in st["deny_events"]:
         return False
     return True
 
@@ -123,30 +187,23 @@ def _rate_ok(entry_id: str, fp: tuple[Any, ...], min_sec: float) -> bool:
     return True
 
 
-def _format_ops_message(rec: dict[str, Any]) -> str:
-    seq = rec.get("seq", "")
-    ts = rec.get("ts_iso", "")
-    level = rec.get("level", "")
-    cat = rec.get("category", "")
-    ev = rec.get("event", "")
-    summary = rec.get("summary", "")
-    lines = [
-        f"Energy Manager #{seq}",
-        f"{ts} [{level}] {cat} · {ev}",
-        str(summary),
-    ]
-    ctx = rec.get("context")
-    if isinstance(ctx, dict) and ctx:
-        try:
-            ctx_s = json.dumps(ctx, ensure_ascii=False, separators=(",", ":"))
-        except (TypeError, ValueError):
-            ctx_s = str(ctx)
-        if ctx_s:
-            lines.append(ctx_s)
-    text = "\n".join(lines)
-    if len(text) > TELEGRAM_MESSAGE_MAX_LEN:
-        text = text[: TELEGRAM_MESSAGE_MAX_LEN - 1] + "…"
-    return text
+def _burst_ok(entry_id: str) -> bool:
+    """Cap total sends per entry in a rolling window to avoid alert floods."""
+    now = time.monotonic()
+    cutoff = now - TELEGRAM_BURST_WINDOW_SEC
+    times = _telegram_burst_times.setdefault(entry_id, [])
+    while times and times[0] < cutoff:
+        times.pop(0)
+    if len(times) >= TELEGRAM_BURST_MAX_MESSAGES:
+        _LOGGER.debug(
+            "Telegram burst limit reached for %s (%s msgs / %ss)",
+            entry_id,
+            TELEGRAM_BURST_MAX_MESSAGES,
+            int(TELEGRAM_BURST_WINDOW_SEC),
+        )
+        return False
+    times.append(now)
+    return True
 
 
 async def _post_json(
@@ -184,7 +241,9 @@ async def async_send_ops_record(
     fp = _alert_fingerprint(record)
     if not _rate_ok(entry_id, fp, st["min_interval_sec"]):
         return
-    text = _format_ops_message(record)
+    if not _burst_ok(entry_id):
+        return
+    text = format_telegram_alert(hass, record)
     url = f"{TELEGRAM_API}/bot{st['token']}/sendMessage"
     payload_base: dict[str, Any] = {"text": text, "disable_web_page_preview": True}
     async with aiohttp.ClientSession() as session:

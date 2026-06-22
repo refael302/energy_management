@@ -240,11 +240,27 @@ OPS_LOG_CATEGORIES: tuple[str, ...] = ("MODE", "ACTION", "FORECAST", "LEARN", "S
 CONF_TELEGRAM_ENABLED = "telegram_enabled"
 CONF_TELEGRAM_BOT_TOKEN = "telegram_bot_token"
 CONF_TELEGRAM_CHAT_IDS = "telegram_chat_ids"
+CONF_TELEGRAM_NOTIFY_MODE = "telegram_notify_mode"
 CONF_TELEGRAM_OUT_CATEGORIES = "telegram_out_categories"
 CONF_TELEGRAM_OUT_LEVELS = "telegram_out_levels"
 CONF_TELEGRAM_EVENTS_DENYLIST = "telegram_events_denylist"
 CONF_TELEGRAM_MIN_INTERVAL_SEC = "telegram_min_interval_sec"
 CONF_TELEGRAM_COMMANDS_ENABLED = "telegram_commands_enabled"
-DEFAULT_TELEGRAM_MIN_INTERVAL_SEC = 0.0
+TELEGRAM_NOTIFY_ALL = "all"
+TELEGRAM_NOTIFY_EMERGENCY = "emergency"
+TELEGRAM_NOTIFY_MODES: tuple[str, ...] = (TELEGRAM_NOTIFY_ALL, TELEGRAM_NOTIFY_EMERGENCY)
+DEFAULT_TELEGRAM_NOTIFY_MODE = TELEGRAM_NOTIFY_ALL
+DEFAULT_TELEGRAM_MIN_INTERVAL_SEC = 60.0
+TELEGRAM_BURST_MAX_MESSAGES = 8
+TELEGRAM_BURST_WINDOW_SEC = 300.0
 TELEGRAM_MESSAGE_MAX_LEN = 4000
 TELEGRAM_POLL_IDLE_SEC = 1.0
+# Ops-log events mirrored to Telegram only when not in this set (still written to file log).
+TELEGRAM_DEFAULT_DENY_EVENTS: frozenset[str] = frozenset(
+    {
+        "consumer_turn_on_no_effect",
+        "consumer_sensor_metrics_updated",
+        "consumer_house_delta_learned",
+        "events_suppressed",
+    }
+)

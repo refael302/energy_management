@@ -39,11 +39,12 @@ from .const import (
     CONF_TELEGRAM_CHAT_IDS,
     CONF_TELEGRAM_COMMANDS_ENABLED,
     CONF_TELEGRAM_ENABLED,
-    CONF_TELEGRAM_EVENTS_DENYLIST,
     CONF_TELEGRAM_MIN_INTERVAL_SEC,
-    CONF_TELEGRAM_OUT_CATEGORIES,
-    CONF_TELEGRAM_OUT_LEVELS,
+    CONF_TELEGRAM_NOTIFY_MODE,
     DEFAULT_TELEGRAM_MIN_INTERVAL_SEC,
+    DEFAULT_TELEGRAM_NOTIFY_MODE,
+    TELEGRAM_NOTIFY_ALL,
+    TELEGRAM_NOTIFY_EMERGENCY,
     DEFAULT_BATTERY_CAPACITY,
     DEFAULT_FORECAST_PR,
     DEFAULT_INVERTER_SIZE_KW,
@@ -52,8 +53,6 @@ from .const import (
     DEFAULT_SYSTEM_SIZE_KW,
     DEFAULT_TILT,
     DEFAULT_AZIMUTH,
-    OPS_LOG_CATEGORIES,
-    OPS_LOG_LEVELS,
 )
 
 
@@ -248,22 +247,19 @@ def strings_schema_install_defaults() -> vol.Schema:
     )
 
 
-def _category_options() -> list[dict[str, str]]:
-    return [{"value": c, "label": c} for c in OPS_LOG_CATEGORIES]
-
-
-def _level_options() -> list[dict[str, str]]:
-    return [{"value": c, "label": c} for c in OPS_LOG_LEVELS]
+def _telegram_notify_mode_default(merged: dict[str, Any]) -> str:
+    """Prefer explicit notify mode; infer emergency from legacy level-only config."""
+    raw = merged.get(CONF_TELEGRAM_NOTIFY_MODE)
+    if raw in (TELEGRAM_NOTIFY_ALL, TELEGRAM_NOTIFY_EMERGENCY):
+        return str(raw)
+    legacy_levels = {str(l).upper() for l in list_or_empty(merged.get("telegram_out_levels"))}
+    if legacy_levels and legacy_levels <= {"WARN", "ERROR"}:
+        return TELEGRAM_NOTIFY_EMERGENCY
+    return DEFAULT_TELEGRAM_NOTIFY_MODE
 
 
 def telegram_options_schema(merged: dict[str, Any]) -> vol.Schema:
-    """Optional Telegram: outbound ops-log filters + inbound commands."""
-    def_cats = list_or_empty(merged.get(CONF_TELEGRAM_OUT_CATEGORIES))
-    if not def_cats:
-        def_cats = list(OPS_LOG_CATEGORIES)
-    def_levels = list_or_empty(merged.get(CONF_TELEGRAM_OUT_LEVELS))
-    if not def_levels:
-        def_levels = list(OPS_LOG_LEVELS)
+    """Optional Telegram: chat ID, notify level, anti-spam, inbound commands."""
     return vol.Schema(
         {
             vol.Required(
@@ -283,30 +279,18 @@ def telegram_options_schema(merged: dict[str, Any]) -> vol.Schema:
                 CONF_TELEGRAM_CHAT_IDS,
                 default=str(merged.get(CONF_TELEGRAM_CHAT_IDS) or ""),
             ): selector.TextSelector(),
-            vol.Optional(
-                CONF_TELEGRAM_OUT_CATEGORIES,
-                default=def_cats,
+            vol.Required(
+                CONF_TELEGRAM_NOTIFY_MODE,
+                default=_telegram_notify_mode_default(merged),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=_category_options(),
-                    multiple=True,
+                    options=[
+                        {"value": TELEGRAM_NOTIFY_ALL, "label": "All notifications"},
+                        {"value": TELEGRAM_NOTIFY_EMERGENCY, "label": "Emergency only"},
+                    ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
-            vol.Optional(
-                CONF_TELEGRAM_OUT_LEVELS,
-                default=def_levels,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_level_options(),
-                    multiple=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                CONF_TELEGRAM_EVENTS_DENYLIST,
-                default=str(merged.get(CONF_TELEGRAM_EVENTS_DENYLIST) or ""),
-            ): selector.TextSelector(),
             vol.Optional(
                 CONF_TELEGRAM_MIN_INTERVAL_SEC,
                 default=float(
