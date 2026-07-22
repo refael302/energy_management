@@ -297,6 +297,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         tg_task.cancel()
 
     entry.async_on_unload(_stop_telegram)
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
     await _async_register_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Link all entities for this config entry to this device
@@ -305,6 +306,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if ent_entry.config_entry_id == entry.entry_id and ent_entry.device_id != device.id:
             ent_reg.async_update_entity(ent_entry.entity_id, device_id=device.id)
     return True
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when options change (e.g. new consumers)."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

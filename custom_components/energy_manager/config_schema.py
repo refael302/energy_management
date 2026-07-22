@@ -124,6 +124,27 @@ def _consumer_switch_defaults(merged: dict[str, Any]) -> list[str]:
     return out
 
 
+def power_sensor_by_switch(merged: dict[str, Any]) -> dict[str, str]:
+    """Map switch_entity_id → existing power_sensor_entity_id (non-empty only)."""
+    raw_consumers = merged.get(CONF_CONSUMERS)
+    if not isinstance(raw_consumers, list):
+        return {}
+    out: dict[str, str] = {}
+    for item in raw_consumers:
+        if not isinstance(item, dict):
+            continue
+        switch_eid = item.get(CONF_CONSUMER_SWITCH_ENTITY_ID)
+        sensor_eid = item.get(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID)
+        if (
+            isinstance(switch_eid, str)
+            and switch_eid
+            and isinstance(sensor_eid, str)
+            and sensor_eid.strip()
+        ):
+            out[switch_eid] = sensor_eid.strip()
+    return out
+
+
 def _home_lat_lon(hass: HomeAssistant) -> tuple[float, float]:
     try:
         return float(hass.config.latitude), float(hass.config.longitude)
@@ -178,15 +199,61 @@ def main_params_schema_minimal(
     )
 
 
-def consumer_power_sensor_schema() -> vol.Schema:
-    """Per-consumer optional power sensor step."""
+def consumer_power_sensor_schema(current_sensor: str | None = None) -> vol.Schema:
+    """Per-consumer optional power sensor step (prefill existing mapping when set)."""
+    field: Any
+    if current_sensor:
+        field = vol.Optional(
+            CONF_CONSUMER_POWER_SENSOR_ENTITY_ID,
+            default=current_sensor,
+        )
+    else:
+        field = vol.Optional(CONF_CONSUMER_POWER_SENSOR_ENTITY_ID)
     return vol.Schema(
         {
-            vol.Optional(
-                CONF_CONSUMER_POWER_SENSOR_ENTITY_ID
-            ): OptionalConsumerPowerEntitySelector(
+            field: OptionalConsumerPowerEntitySelector(
                 selector.EntityFilterSelectorConfig(domain=["sensor"])
             ),
+        }
+    )
+
+
+def consumers_only_schema(merged: dict[str, Any]) -> vol.Schema:
+    """Options: add/edit consumer switches only (no global sensors)."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_CONSUMER_SWITCHES,
+                default=_consumer_switch_defaults(merged),
+            ): consumer_entity_selector(),
+        }
+    )
+
+
+def main_params_schema_sensors_only(merged: dict[str, Any]) -> vol.Schema:
+    """Options main: global sensors and battery capacity (consumers edited separately)."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_BATTERY_SOC_SENSOR,
+                default=merged.get(CONF_BATTERY_SOC_SENSOR) or "",
+            ): battery_sensor_selector(),
+            vol.Required(
+                CONF_BATTERY_POWER_SENSOR,
+                default=merged.get(CONF_BATTERY_POWER_SENSOR) or "",
+            ): sensor_selector(),
+            vol.Required(
+                CONF_SOLAR_PRODUCTION_SENSOR,
+                default=merged.get(CONF_SOLAR_PRODUCTION_SENSOR) or "",
+            ): sensor_selector(),
+            vol.Required(
+                CONF_HOUSE_CONSUMPTION_SENSOR,
+                default=merged.get(CONF_HOUSE_CONSUMPTION_SENSOR) or "",
+            ): sensor_selector(),
+            vol.Required(
+                CONF_BATTERY_CAPACITY,
+                default=merged.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY),
+            ): vol.Coerce(float),
         }
     )
 

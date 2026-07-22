@@ -103,19 +103,19 @@
           "title": "אפשרויות Energy Manager",
           "description": "בחר מה להגדיר.",
           "menu_options": {
-            "main": "חיישנים, תחזית וצרכנים",
+            "main": "חיישנים ותחזית",
+            "consumers": "הוספה / עריכת צרכנים",
             "telegram": "התראות טלגרם ובוט"
           }
         },
         "main": {
-          "title": "חיישנים וצרכנים",
-          "description": "עדכון חיישני סוללה, סולאר ובית, מתגי צרכנים וקיבולת סוללה (kWh). אחר כך פרמטרים מספריים נוספים ואז סטרינגים סולאריים.",
+          "title": "חיישנים ותחזית",
+          "description": "עדכון חיישני סוללה, סולאר ובית, וקיבולת סוללה (kWh). אחר כך פרמטרים מספריים נוספים ואז סטרינגים סולאריים. צרכנים מוגדרים בתפריט נפרד.",
           "data": {
             "battery_soc_sensor": "חיישן מצב טעינת סוללה (SOC)",
             "battery_power_sensor": "חיישן הספק סוללה",
             "solar_production_sensor": "חיישן ייצור סולארי",
             "house_consumption_sensor": "חיישן צריכת בית",
-            "consumer_switches": "מתגי צרכנים (עומסים כבדים)",
             "battery_capacity": "קיבולת סוללה"
           },
           "data_description": {
@@ -123,8 +123,20 @@
             "battery_power_sensor": "חיישן הספק סוללה ב־W (חיובי = פריקה). דוגמה: sensor.solarman_battery_power",
             "solar_production_sensor": "חיישן הספק ייצור סולארי ב־W. דוגמה: sensor.solar_production_power",
             "house_consumption_sensor": "חיישן צריכת בית כוללת ב־W. דוגמה: sensor.house_power",
-            "consumer_switches": "מתגים או Input Boolean לצרכנים כבדים (דוד, מזגן, בריכה וכו'). הסדר = עדיפות: הראשון יודלק ראשון כשיש עודף, האחרון יכבה ראשון בחיסכון. אפשר גם לבחור קבוצה שמכילה את הישויות.",
             "battery_capacity": "קיבולת סוללה ב־kWh. דוגמה: 20"
+          }
+        },
+        "consumers": {
+          "title": "צרכנים (מכשירים)",
+          "description": "הוספה או עריכה של מתגי עומסים כבדים. הסדר = עדיפות: הראשון יודלק ראשון כשיש עודף, האחרון יכבה ראשון בחיסכון. בשלב הבא ניתן לשייך חיישן הספק אופציונלי לכל צרכן.",
+          "data": {
+            "consumer_switches": "מתגי צרכנים (עומסים כבדים)"
+          },
+          "data_description": {
+            "consumer_switches": "מתגים או Input Boolean לצרכנים כבדים (דוד, מזגן, בריכה וכו'). אפשר גם לבחור קבוצה שמכילה את הישויות."
+          },
+          "errors": {
+            "required": "יש לבחור לפחות מתג צרכן אחד."
           }
         },
         "telegram": {
@@ -182,7 +194,7 @@
         },
         "consumer_power_sensor": {
           "title": "שיוך חיישן הספק לצרכן",
-          "description": "צרכן {consumer_index}/{consumer_total}: {consumer_entity_id}. בחר חיישן הספק ייעודי לצרכן (אופציונלי), או השאר ריק כדי להמשיך עם fallback.",
+          "description": "צרכן {consumer_index}/{consumer_total}: {consumer_entity_id}. השיוך הקיים מוצג מראש. שנה אותו, או נקה את השדה כדי להמשיך עם fallback.",
           "data": {
             "power_sensor_entity_id": "חיישן הספק (אופציונלי)"
           },

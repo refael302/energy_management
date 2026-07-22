@@ -103,19 +103,19 @@
           "title": "Energy Manager options",
           "description": "Choose what to configure.",
           "menu_options": {
-            "main": "Sensors, forecast, and consumers",
+            "main": "Sensors and forecast",
+            "consumers": "Add / edit consumers",
             "telegram": "Telegram notifications and bot"
           }
         },
         "main": {
-          "title": "Sensors and consumers",
-          "description": "Update battery, solar, and house sensors, consumer switches, and battery capacity (kWh). Next: other numeric parameters, then PV strings.",
+          "title": "Sensors and forecast",
+          "description": "Update battery, solar, and house sensors, and battery capacity (kWh). Next: other numeric parameters, then PV strings. Consumers are configured in a separate menu.",
           "data": {
             "battery_soc_sensor": "Battery state of charge (SOC) sensor",
             "battery_power_sensor": "Battery power sensor",
             "solar_production_sensor": "Solar production power sensor",
             "house_consumption_sensor": "House consumption power sensor",
-            "consumer_switches": "Consumer switches (heavy loads)",
             "battery_capacity": "Battery capacity"
           },
           "data_description": {
@@ -123,8 +123,20 @@
             "battery_power_sensor": "Sensor for battery power in W (positive = discharge). Example: sensor.solarman_battery_power",
             "solar_production_sensor": "Sensor for solar production power in W. Example: sensor.solar_production_power",
             "house_consumption_sensor": "Sensor for total house consumption in W. Example: sensor.house_power",
-            "consumer_switches": "Switches or input booleans for heavy consumers (boiler, AC, pool, etc.). The order is the priority: first = turned on first when there is surplus, last = turned off first when saving. You can also add a group that contains these entities.",
             "battery_capacity": "Battery capacity in kWh. Example: 20"
+          }
+        },
+        "consumers": {
+          "title": "Consumers (devices)",
+          "description": "Add or edit heavy-load switches. Order is priority: first = turned on first when there is surplus, last = turned off first when saving. Next you can assign an optional power sensor per consumer.",
+          "data": {
+            "consumer_switches": "Consumer switches (heavy loads)"
+          },
+          "data_description": {
+            "consumer_switches": "Switches or input booleans for heavy consumers (boiler, AC, pool, etc.). You can also add a group that contains these entities."
+          },
+          "errors": {
+            "required": "Select at least one consumer switch."
           }
         },
         "telegram": {
@@ -182,7 +194,7 @@
         },
         "consumer_power_sensor": {
           "title": "Consumer power sensor mapping",
-          "description": "Consumer {consumer_index}/{consumer_total}: {consumer_entity_id}. Select an optional dedicated power sensor for this consumer, or leave empty to keep fallback behavior.",
+          "description": "Consumer {consumer_index}/{consumer_total}: {consumer_entity_id}. Existing mapping is pre-filled. Change it, or clear the field to use fallback behavior.",
           "data": {
             "power_sensor_entity_id": "Power sensor (optional)"
           },
