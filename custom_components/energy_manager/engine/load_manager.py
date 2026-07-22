@@ -276,11 +276,10 @@ class LoadManager:
         suppress_wasting_turn_ons: when True, still allow wasting turn-offs but no new turn-ons.
         apply_saving_bulk: when False, saving/emergency_saving skip consumer/super-saving bulk (coordinator).
         decision_context: per-tick snapshot from coordinator for ACTION logs (required when logging).
+        cycle_disabled: entity IDs with auto control off — skip turn-ons only; turn-offs still run.
         """
         self._integration_turn_on_eids_this_apply.clear()
         disabled = cycle_disabled or frozenset()
-        if disabled:
-            self._purge_cycle_disabled(disabled)
         if system_mode != SYSTEM_MODE_WASTING:
             self._wasting_turn_on_cursor = 0
             self._wasting_manual_off_blocked.clear()
@@ -295,6 +294,7 @@ class LoadManager:
                     house_consumption_entity_id,
                     suppress_turn_ons=suppress_wasting_turn_ons,
                     decision_context=dc,
+                    cycle_disabled=disabled,
                 )
             else:
                 await self._apply_wasting_fallback(
@@ -326,14 +326,7 @@ class LoadManager:
                 consumers,
                 learned_kw=consumer_learned_kw or {},
                 decision_context=dc,
-                cycle_disabled=disabled,
             )
-
-    def _purge_cycle_disabled(self, cycle_disabled: frozenset[str]) -> None:
-        """Stop managing consumers excluded from the auto-control cycle."""
-        for eid in cycle_disabled:
-            self._remove_managed(eid)
-            self._wasting_manual_off_blocked.discard(eid)
 
     def _domain(self, entity_id: str) -> str | None:
         """Return entity domain if it is a supported consumer, else None."""
@@ -419,14 +412,15 @@ class LoadManager:
         *,
         learned_kw: dict[str, float],
         decision_context: DecisionContext | None,
-        cycle_disabled: frozenset[str] | None = None,
     ) -> None:
-        """Turn off one integration-managed consumer (LIFO), per user delay_minutes."""
-        disabled = cycle_disabled or frozenset()
+        """Turn off one integration-managed consumer (LIFO), per user delay_minutes.
+
+        Auto-control (cycle) disable only blocks turn-ons; turn-offs always apply.
+        """
         to_consider = [
             eid
             for eid in self.state.consumers_turned_on_by_wasting
-            if self._domain(eid) and eid not in disabled
+            if self._domain(eid)
         ]
         if not to_consider or not self._can_turn_off_another_normal():
             return
@@ -553,13 +547,18 @@ class LoadManager:
         *,
         suppress_turn_ons: bool = False,
         decision_context: DecisionContext | None = None,
+        cycle_disabled: frozenset[str] | None = None,
     ) -> None:
-        """One turn-on or turn-off per eligible tick, prioritizing turn-off for safety."""
+        """One turn-on or turn-off per eligible tick, prioritizing turn-off for safety.
+
+        cycle_disabled blocks new turn-ons only; turn-offs still run for those consumers.
+        """
         now_utc = datetime.now(timezone.utc)
         self._purge_expired_discharge_shed(now_utc)
         learned_kw = ctx.learned_kw
         ordered = ctx.consumers_ordered
         target = ctx.learned_target
+        disabled = cycle_disabled or frozenset()
         self._remember_manual_offs_in_wasting_session()
 
         def is_on(eid: str) -> bool:
@@ -607,6 +606,8 @@ class LoadManager:
         for k in range(n):
             idx = (start + k) % n
             eid = ordered[idx]
+            if eid in disabled:
+                continue
             reason_code = self._wasting_turn_on_reason_code(eid, ctx, learned_kw)
             if reason_code is None:
                 continue

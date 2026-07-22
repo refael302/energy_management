@@ -1,6 +1,6 @@
 """
 Energy Manager switches – Manual Mode Override, Manual Strategy Override,
-per-consumer cycle control (quick neutral).
+per-consumer auto control (gates turn-on only; turn-offs stay automatic).
 """
 
 from __future__ import annotations
@@ -159,7 +159,7 @@ class ManualStrategyOverrideSwitch(_BaseOverrideSwitch):
 
 
 class ConsumerCycleSwitch(CoordinatorEntity[EnergyManagerCoordinator], SwitchEntity):
-    """Per-consumer switch: on = integration auto-controls; off = quick neutral (out of cycle)."""
+    """Per-consumer switch: on = may auto turn-on; off = no auto turn-on (turn-offs still auto)."""
 
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:sync"

@@ -1,4 +1,7 @@
-"""Per-consumer cycle participation (quick neutral) helpers."""
+"""Per-consumer auto-control (cycle) helpers.
+
+Auto control gates turn-ons only; automatic turn-offs always apply.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +11,7 @@ from .const import CONF_CONSUMER_CYCLE_ENABLED
 
 
 def get_consumer_cycle_enabled_map(config: dict[str, Any]) -> dict[str, bool]:
-    """Per-consumer cycle participation from options (default True when unset)."""
+    """Per-consumer auto-control flags from options (default True when unset)."""
     raw = config.get(CONF_CONSUMER_CYCLE_ENABLED) or {}
     if not isinstance(raw, dict):
         return {}
@@ -18,7 +21,7 @@ def get_consumer_cycle_enabled_map(config: dict[str, Any]) -> dict[str, bool]:
 def is_consumer_cycle_enabled(
     entity_id: str, enabled_map: dict[str, bool]
 ) -> bool:
-    """True when the integration may auto-control this consumer."""
+    """True when the integration may auto turn-on this consumer."""
     if entity_id in enabled_map:
         return enabled_map[entity_id]
     return True
@@ -27,5 +30,5 @@ def is_consumer_cycle_enabled(
 def filter_cycle_active_consumers(
     entity_ids: list[str], enabled_map: dict[str, bool]
 ) -> list[str]:
-    """Consumers that participate in wasting rotation and auto control."""
+    """Consumers eligible for automatic turn-on / wasting target selection."""
     return [eid for eid in entity_ids if is_consumer_cycle_enabled(eid, enabled_map)]

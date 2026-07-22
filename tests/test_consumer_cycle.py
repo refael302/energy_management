@@ -1,4 +1,4 @@
-"""Per-consumer cycle enable / quick-neutral filtering."""
+"""Per-consumer auto control (turn-on gate) filtering."""
 
 from __future__ import annotations
 
