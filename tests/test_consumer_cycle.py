@@ -1,4 +1,4 @@
-"""Per-consumer auto control (turn-on gate) filtering."""
+"""Per-consumer auto control filtering (on and off in wasting/normal)."""
 
 from __future__ import annotations
 
@@ -33,3 +33,25 @@ def test_cycle_enabled_map_from_config() -> None:
         ["switch.a", "switch.b", "switch.c"],
         get_consumer_cycle_enabled_map(cfg),
     ) == ["switch.b", "switch.c"]
+
+
+def test_disabled_consumer_excluded_from_wasting_pool() -> None:
+    """AC with auto control off must not appear in wasting ordered/target pool.
+
+    Regression: v1.18.1 put all consumers in consumers_ordered while excluding
+    disabled ones from learned_target, so an ON AC was turned off as
+    wasting_not_in_target midday despite auto control being off.
+    """
+    all_consumers = [
+        "switch.dvd",
+        "switch.mzgn_ykhydh_on_off",
+        "switch.mpzr_khvm",
+    ]
+    enabled_map = {
+        "switch.dvd": True,
+        "switch.mzgn_ykhydh_on_off": False,
+        "switch.mpzr_khvm": True,
+    }
+    active = filter_cycle_active_consumers(all_consumers, enabled_map)
+    assert "switch.mzgn_ykhydh_on_off" not in active
+    assert active == ["switch.dvd", "switch.mpzr_khvm"]

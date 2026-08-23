@@ -1,6 +1,6 @@
 """
 Energy Manager switches – Manual Mode Override, Manual Strategy Override,
-per-consumer auto control (gates turn-on only; turn-offs stay automatic).
+per-consumer auto control (when off: no auto on/off in wasting/normal).
 """
 
 from __future__ import annotations

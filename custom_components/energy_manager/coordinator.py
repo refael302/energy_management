@@ -763,12 +763,10 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if budget_updated:
                     self._locked_consumer_budget_kw = effective_budget_kw
                 learned_map = self.consumer_learner.get_learned_kw()
-                # Target / turn-on pool: auto-control enabled only.
-                # Full consumer list stays in consumers_ordered so turn-offs still apply
-                # when auto control is off.
-                consumer_list_for_target = cycle_active_consumer_ids
+                # Auto-control off → exclude from target, turn-ons, and wasting turn-offs.
+                consumer_list = cycle_active_consumer_ids
                 learned_target = select_learned_consumers(
-                    consumer_list_for_target,
+                    consumer_list,
                     learned_map,
                     effective_budget_kw,
                     budget_ceilings.discharge_kw,
@@ -789,7 +787,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                 learned_target = trim_learned_consumers_for_very_low_horizon(
                     learned_target,
-                    consumer_list_for_target,
+                    consumer_list,
                     learned_map,
                     marginal,
                     now_local=dt_util.now(),
@@ -805,7 +803,7 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     hours_until_first_pv=float(self.model.hours_until_first_pv),
                 )
                 wasting_context = WastingContext(
-                    consumers_ordered=consumer_entity_ids,
+                    consumers_ordered=consumer_list,
                     learned_kw=dict(learned_map),
                     learned_target=learned_target,
                     discharge_headroom_kw=budget_ceilings.discharge_kw,

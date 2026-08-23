@@ -1,6 +1,7 @@
 """Per-consumer auto-control (cycle) helpers.
 
-Auto control gates turn-ons only; automatic turn-offs always apply.
+When auto control is off, the integration does not turn the consumer on or off
+in wasting/normal. Saving / emergency_saving still turn all consumers off.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ def get_consumer_cycle_enabled_map(config: dict[str, Any]) -> dict[str, bool]:
 def is_consumer_cycle_enabled(
     entity_id: str, enabled_map: dict[str, bool]
 ) -> bool:
-    """True when the integration may auto turn-on this consumer."""
+    """True when the integration may auto-control this consumer (on and off)."""
     if entity_id in enabled_map:
         return enabled_map[entity_id]
     return True
@@ -30,5 +31,5 @@ def is_consumer_cycle_enabled(
 def filter_cycle_active_consumers(
     entity_ids: list[str], enabled_map: dict[str, bool]
 ) -> list[str]:
-    """Consumers eligible for automatic turn-on / wasting target selection."""
+    """Consumers that participate in wasting rotation and auto on/off control."""
     return [eid for eid in entity_ids if is_consumer_cycle_enabled(eid, enabled_map)]
