@@ -276,10 +276,12 @@ class LoadManager:
         suppress_wasting_turn_ons: when True, still allow wasting turn-offs but no new turn-ons.
         apply_saving_bulk: when False, saving/emergency_saving skip consumer/super-saving bulk (coordinator).
         decision_context: per-tick snapshot from coordinator for ACTION logs (required when logging).
-        cycle_disabled: entity IDs with auto control off — skip turn-ons only; turn-offs still run.
+        cycle_disabled: entity IDs with auto control off — skip turn-ons and wasting/normal turn-offs.
         """
         self._integration_turn_on_eids_this_apply.clear()
         disabled = cycle_disabled or frozenset()
+        if disabled:
+            self._purge_cycle_disabled(disabled)
         if system_mode != SYSTEM_MODE_WASTING:
             self._wasting_turn_on_cursor = 0
             self._wasting_manual_off_blocked.clear()
@@ -326,7 +328,14 @@ class LoadManager:
                 consumers,
                 learned_kw=consumer_learned_kw or {},
                 decision_context=dc,
+                cycle_disabled=disabled,
             )
+
+    def _purge_cycle_disabled(self, cycle_disabled: frozenset[str]) -> None:
+        """Stop managing consumers excluded from the auto-control cycle."""
+        for eid in cycle_disabled:
+            self._remove_managed(eid)
+            self._wasting_manual_off_blocked.discard(eid)
 
     def _domain(self, entity_id: str) -> str | None:
         """Return entity domain if it is a supported consumer, else None."""
@@ -412,15 +421,14 @@ class LoadManager:
         *,
         learned_kw: dict[str, float],
         decision_context: DecisionContext | None,
+        cycle_disabled: frozenset[str] | None = None,
     ) -> None:
-        """Turn off one integration-managed consumer (LIFO), per user delay_minutes.
-
-        Auto-control (cycle) disable only blocks turn-ons; turn-offs always apply.
-        """
+        """Turn off one integration-managed consumer (LIFO), per user delay_minutes."""
+        disabled = cycle_disabled or frozenset()
         to_consider = [
             eid
             for eid in self.state.consumers_turned_on_by_wasting
-            if self._domain(eid)
+            if self._domain(eid) and eid not in disabled
         ]
         if not to_consider or not self._can_turn_off_another_normal():
             return
@@ -551,7 +559,8 @@ class LoadManager:
     ) -> None:
         """One turn-on or turn-off per eligible tick, prioritizing turn-off for safety.
 
-        cycle_disabled blocks new turn-ons only; turn-offs still run for those consumers.
+        cycle_disabled blocks both turn-ons and turn-offs for those consumers.
+        Coordinator should already omit them from consumers_ordered / learned_target.
         """
         now_utc = datetime.now(timezone.utc)
         self._purge_expired_discharge_shed(now_utc)
@@ -567,6 +576,8 @@ class LoadManager:
 
         rev = list(reversed(ordered))
         for eid in rev:
+            if eid in disabled:
+                continue
             if eid not in learned_kw:
                 continue
             if eid in target:
