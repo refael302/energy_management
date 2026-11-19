@@ -8,6 +8,9 @@ one turn-on is issued or the list is exhausted once.
 After the integration turns a consumer on, it is not turned off again until
 CONSUMER_MIN_ON_MINUTES (learned) or CONSUMER_MIN_ON_UNLEARNED_MINUTES have elapsed
 (saving / discharge_over_limit exempt).
+After the integration turns a consumer off (wasting not-in-target, normal LIFO, or
+discharge shed), re-turn-on is blocked for CONSUMER_MIN_OFF_MINUTES (discharge shed
+uses the same floor via DISCHARGE_SHED_COOLDOWN_SEC).
 Saving mode runs bulk turn-off only on entry to saving (still only calls turn_off
 for entities that are on). Emergency saving repeats bulk at EMERGENCY_SAVING_BULK_INTERVAL_SEC
 while the mode stays active.
@@ -27,6 +30,7 @@ from homeassistant.exceptions import HomeAssistantError
 from ..const import (
     CONSUMER_ACTION_DELAY_LEARNED_MINUTES,
     CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES,
+    CONSUMER_MIN_OFF_MINUTES,
     CONSUMER_MIN_ON_MINUTES,
     CONSUMER_MIN_ON_UNLEARNED_MINUTES,
     CONSUMER_UNLEARNED_ASSUMED_KW,
@@ -139,8 +143,8 @@ class LoadManager:
         self._last_turn_off_delay_sec: int = CONSUMER_ACTION_DELAY_LEARNED_MINUTES * 60
         self._integration_turn_on_at_utc: dict[str, datetime] = {}
         self._integration_turn_on_eids_this_apply: list[str] = []
-        # Anti-flap: after discharge-ceiling shed, block re-turn-on for DISCHARGE_SHED_COOLDOWN_SEC.
-        self._discharge_shed_until_utc: dict[str, datetime] = {}
+        # Anti-flap: after integration turn-off, block re-turn-on until this UTC time.
+        self._turn_on_blocked_until_utc: dict[str, datetime] = {}
         self._last_emergency_saving_bulk_utc: datetime | None = None
         # Wasting: next consumer index to consider for turn-on (strict list order, wraps).
         self._wasting_turn_on_cursor: int = 0
@@ -175,24 +179,37 @@ class LoadManager:
             if eid.split(".", 1)[0] in CONSUMER_DOMAINS
         ]
 
-    def _purge_expired_discharge_shed(self, now_utc: datetime) -> None:
+    def _purge_expired_turn_on_blocks(self, now_utc: datetime) -> None:
         expired = [
             eid
-            for eid, until in self._discharge_shed_until_utc.items()
+            for eid, until in self._turn_on_blocked_until_utc.items()
             if until <= now_utc
         ]
         for eid in expired:
-            del self._discharge_shed_until_utc[eid]
+            del self._turn_on_blocked_until_utc[eid]
 
-    def _is_under_discharge_shed_cooldown(self, entity_id: str, *, now_utc: datetime) -> bool:
-        until = self._discharge_shed_until_utc.get(entity_id)
+    def _is_under_turn_on_cooldown(self, entity_id: str, *, now_utc: datetime) -> bool:
+        until = self._turn_on_blocked_until_utc.get(entity_id)
         return until is not None and until > now_utc
+
+    def note_turn_off_cooldown(
+        self, entity_id: str, *, cooldown_sec: int | None = None
+    ) -> None:
+        """Block re-turn-on after an integration turn-off (anti-flap)."""
+        if cooldown_sec is None:
+            sec = max(1, int(CONSUMER_MIN_OFF_MINUTES) * 60)
+        else:
+            sec = max(1, int(cooldown_sec))
+        now = datetime.now(timezone.utc)
+        until = now + timedelta(seconds=sec)
+        prev = self._turn_on_blocked_until_utc.get(entity_id)
+        if prev is None or until > prev:
+            self._turn_on_blocked_until_utc[entity_id] = until
 
     def note_discharge_shed(self, entity_id: str) -> None:
         """Call after turning a consumer off due to discharge ceiling (coordinator / tests)."""
-        now = datetime.now(timezone.utc)
-        self._discharge_shed_until_utc[entity_id] = now + timedelta(
-            seconds=max(1, int(DISCHARGE_SHED_COOLDOWN_SEC))
+        self.note_turn_off_cooldown(
+            entity_id, cooldown_sec=max(1, int(DISCHARGE_SHED_COOLDOWN_SEC))
         )
 
     def emergency_saving_bulk_due(self, interval_sec: int) -> bool:
@@ -438,6 +455,7 @@ class LoadManager:
             self._remove_managed(entity_id)
             await self._call_turn_off([entity_id])
             self._last_turn_off_time = datetime.now(timezone.utc)
+            self.note_turn_off_cooldown(entity_id)
             _LOGGER.debug("Turned off (normal, LIFO): %s", entity_id)
             if decision_context is not None:
                 await self._log_action(
@@ -563,7 +581,7 @@ class LoadManager:
         Coordinator should already omit them from consumers_ordered / learned_target.
         """
         now_utc = datetime.now(timezone.utc)
-        self._purge_expired_discharge_shed(now_utc)
+        self._purge_expired_turn_on_blocks(now_utc)
         learned_kw = ctx.learned_kw
         ordered = ctx.consumers_ordered
         target = ctx.learned_target
@@ -592,6 +610,7 @@ class LoadManager:
             self._remove_managed(eid)
             self._last_turn_off_time = datetime.now(timezone.utc)
             self._last_turn_off_delay_sec = self._delay_seconds_for_entity(eid, learned_kw)
+            self.note_turn_off_cooldown(eid)
             _LOGGER.debug("Wasting budget: turned off %s (not in target)", eid)
             if decision_context is not None:
                 await self._log_action(
@@ -631,7 +650,7 @@ class LoadManager:
                 self._debug_skip_consumer_not_on_off(eid)
                 self._wasting_turn_on_cursor = (idx + 1) % n
                 continue
-            if self._is_under_discharge_shed_cooldown(eid, now_utc=now_utc):
+            if self._is_under_turn_on_cooldown(eid, now_utc=now_utc):
                 continue
             if not self._can_turn_on_after_delay(eid, learned_kw):
                 continue
@@ -711,6 +730,8 @@ class LoadManager:
         disabled = cycle_disabled or frozenset()
         if suppress_turn_ons:
             return
+        now_utc = datetime.now(timezone.utc)
+        self._purge_expired_turn_on_blocks(now_utc)
         active = [eid for eid in consumers if eid not in disabled]
         if not active or not self._can_turn_on_after_delay(
             active[0], learned_kw
@@ -724,6 +745,8 @@ class LoadManager:
                 continue
             if on_off != "off":
                 self._debug_skip_consumer_not_on_off(entity_id)
+                continue
+            if self._is_under_turn_on_cooldown(entity_id, now_utc=now_utc):
                 continue
             await self._turn_on_consumer(entity_id)
             self._last_turn_on_time = datetime.now(timezone.utc)
