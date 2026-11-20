@@ -41,9 +41,10 @@ CONSUMER_ACTION_DELAY_LEARNED_MINUTES = 1
 CONSUMER_ACTION_DELAY_UNLEARNED_MINUTES = 5
 # Minimum time a consumer must stay on after the integration turns it on, before we may turn it off
 # again (wasting / normal LIFO). Saving mode and discharge_over_limit ignore this.
-CONSUMER_MIN_ON_MINUTES = 5
+# 20 min avoids short thermal cycles (boiler / heater) when budget oscillates around learned kW.
+CONSUMER_MIN_ON_MINUTES = 20
 # Longer minimum on for consumers not yet in learned_kw (house-delta / cautious path).
-CONSUMER_MIN_ON_UNLEARNED_MINUTES = 12
+CONSUMER_MIN_ON_UNLEARNED_MINUTES = 20
 # Assumed kW for an unlearned consumer when checking discharge headroom before learn-path turn-on.
 CONSUMER_UNLEARNED_ASSUMED_KW = 2.0
 # Hysteresis: only adopt new raw budget if relative change >= this ratio vs last locked budget
@@ -54,8 +55,10 @@ DEFAULT_CONSUMER_BUDGET_HYSTERESIS_RATIO = 0.15
 DISCHARGE_HEADROOM_FRACTION = 0.30
 # Hysteresis for discharge_under_limit: band below operational ceiling, as fraction of full max kW
 DISCHARGE_DEADBAND_FRACTION_OF_MAX = 0.05
-# After a discharge-ceiling shed, block re-turn-on of that consumer (anti-flap with greedy budget).
-DISCHARGE_SHED_COOLDOWN_SEC = 180
+# After any integration turn-off (wasting not-in-target, normal LIFO, discharge shed),
+# block re-turn-on for this many minutes (anti-flap). Discharge shed uses the same floor.
+CONSUMER_MIN_OFF_MINUTES = 15
+DISCHARGE_SHED_COOLDOWN_SEC = CONSUMER_MIN_OFF_MINUTES * 60
 # Extra kW slack when greedy-picking consumers vs discharge headroom (sensor / learn error).
 CONSUMER_DISCHARGE_HEADROOM_SAFETY_KW = 0.25
 
@@ -156,7 +159,8 @@ SYSTEM_MODE_WASTING = "wasting"
 SYSTEM_MODE_EMERGENCY_SAVING = "emergency_saving"
 
 # Minimum seconds before switching between normal and wasting (0 = disabled).
-SYSTEM_MODE_NORMAL_WASTING_DWELL_SEC = 0
+# Reduces mode flap that causes rapid consumer off→on at the wasting boundary.
+SYSTEM_MODE_NORMAL_WASTING_DWELL_SEC = 300
 
 # Daily margin thresholds for strategy recommendation (kWh)
 MARGIN_HIGH_THRESHOLD = 20
