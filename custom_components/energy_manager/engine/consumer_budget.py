@@ -120,10 +120,79 @@ def marginal_battery_load_fraction(
     """
     Fraction of each additional kW of consumer load expected to come from battery discharge
     when PV is not already covering house (conservative 0..1).
+
+    Note: this is the *current* snapshot. For turn-on gating prefer
+    ``battery_load_delta_kw`` / ``projected_discharge_kw`` which evaluate house+extra.
     """
     if solar_production_kw + 0.05 >= house_consumption_kw:
         return 0.0
     return 1.0
+
+
+def battery_load_delta_kw(
+    solar_production_kw: float,
+    house_consumption_kw: float,
+    extra_load_kw: float,
+) -> float:
+    """
+    Increase in battery-served house load (kW) after adding extra_load_kw to the house.
+
+    If PV still covers house+extra → 0. If PV already short → full extra.
+    If PV covers only part of the extra → only the overflow hits the battery.
+    """
+    extra = max(0.0, float(extra_load_kw))
+    if extra <= 1e-9:
+        return 0.0
+    solar = max(0.0, float(solar_production_kw))
+    house = max(0.0, float(house_consumption_kw))
+    before = max(0.0, house - solar)
+    after = max(0.0, house + extra - solar)
+    return max(0.0, after - before)
+
+
+def operational_discharge_ceiling_kw(max_battery_discharge_kw: float) -> float:
+    """Operational discharge ceiling (kW): max × (1 - headroom fraction)."""
+    m_kw = max(MIN_EFFECTIVE_MAX_BATTERY_POWER_KW, float(max_battery_discharge_kw))
+    return max(0.0, m_kw * (1.0 - DISCHARGE_HEADROOM_FRACTION))
+
+
+def projected_discharge_kw(
+    *,
+    solar_production_kw: float,
+    house_consumption_kw: float,
+    battery_discharge_kw: float,
+    extra_load_kw: float,
+) -> float:
+    """Estimated battery discharge kW after adding extra_load not yet in the house reading."""
+    delta = battery_load_delta_kw(
+        solar_production_kw, house_consumption_kw, extra_load_kw
+    )
+    return max(0.0, float(battery_discharge_kw)) + delta
+
+
+def fits_discharge_ceiling_after_extra(
+    *,
+    solar_production_kw: float,
+    house_consumption_kw: float,
+    battery_discharge_kw: float,
+    max_battery_discharge_kw: float,
+    extra_load_kw: float,
+    safety_kw: float | None = None,
+) -> bool:
+    """True if projected discharge after extra_load stays within operational ceiling + safety."""
+    safety = (
+        max(0.0, float(CONSUMER_DISCHARGE_HEADROOM_SAFETY_KW))
+        if safety_kw is None
+        else max(0.0, float(safety_kw))
+    )
+    ceiling = operational_discharge_ceiling_kw(max_battery_discharge_kw)
+    projected = projected_discharge_kw(
+        solar_production_kw=solar_production_kw,
+        house_consumption_kw=house_consumption_kw,
+        battery_discharge_kw=battery_discharge_kw,
+        extra_load_kw=extra_load_kw,
+    )
+    return projected + safety - ceiling <= 1e-6
 
 
 def compute_raw_budget_kw(
@@ -203,16 +272,34 @@ def select_learned_consumers(
     budget_kw: float,
     discharge_headroom_kw: float,
     marginal_battery_per_kw: float,
+    *,
+    solar_production_kw: float | None = None,
+    house_consumption_kw: float | None = None,
+    battery_discharge_kw: float | None = None,
+    max_battery_discharge_kw: float | None = None,
+    currently_on: set[str] | frozenset[str] | None = None,
 ) -> set[str]:
     """
-    Greedy by priority order: add consumer if sum learned_kw <= budget and battery discharge path allows.
-    marginal_battery_per_kw: 0 if PV covers house, else ~1 — additional load increases discharge ~1:1.
+    Greedy by priority order: add consumer if sum learned_kw <= budget and discharge path allows.
+
+    When solar/house/max_discharge are provided, gate on *projected* discharge after the
+    new load (house+extra), not only the current marginal snapshot (which is 0 whenever
+    PV covers the house *before* the consumer turns on).
+
+    Legacy path (no solar/house): ``(total * marginal) + safety <= discharge_headroom``.
     """
     selected: set[str] = set()
     total_learned = 0.0
     budget = max(0.0, budget_kw)
     d_head = max(0.0, discharge_headroom_kw)
     m = max(0.0, min(1.0, marginal_battery_per_kw))
+    on = set(currently_on or ())
+    use_projected = (
+        solar_production_kw is not None
+        and house_consumption_kw is not None
+        and battery_discharge_kw is not None
+        and max_battery_discharge_kw is not None
+    )
 
     safety = max(0.0, float(CONSUMER_DISCHARGE_HEADROOM_SAFETY_KW))
     for eid in consumers_ordered:
@@ -221,9 +308,24 @@ def select_learned_consumers(
             continue
         if total_learned + kw - budget > 1e-6:
             continue
-        load_on_battery = (total_learned + kw) * m
-        if load_on_battery + safety - d_head > 1e-6:
-            continue
+        if use_projected:
+            tentative = selected | {eid}
+            extra_new = sum(
+                float(learned_kw[e]) for e in tentative if e not in on and e in learned_kw
+            )
+            if not fits_discharge_ceiling_after_extra(
+                solar_production_kw=float(solar_production_kw),
+                house_consumption_kw=float(house_consumption_kw),
+                battery_discharge_kw=float(battery_discharge_kw),
+                max_battery_discharge_kw=float(max_battery_discharge_kw),
+                extra_load_kw=extra_new,
+                safety_kw=safety,
+            ):
+                continue
+        else:
+            load_on_battery = (total_learned + kw) * m
+            if load_on_battery + safety - d_head > 1e-6:
+                continue
         selected.add(eid)
         total_learned += kw
 
@@ -238,19 +340,47 @@ def next_unlearned_for_sampling(
     discharge_headroom_kw: float,
     marginal_battery_per_kw: float,
     min_headroom_for_unknown_kw: float = CONSUMER_UNLEARNED_ASSUMED_KW,
+    solar_production_kw: float | None = None,
+    house_consumption_kw: float | None = None,
+    battery_discharge_kw: float | None = None,
+    max_battery_discharge_kw: float | None = None,
+    currently_on: set[str] | frozenset[str] | None = None,
+    pending_extra_kw: float = 0.0,
 ) -> str | None:
     """
     First (priority) consumer that is off, not learned, not already targeted for turn-on.
-    Skip if battery discharge headroom is below min (unknown load risk; default assumes
-    CONSUMER_UNLEARNED_ASSUMED_KW per unlearned consumer).
+    Skip if projected discharge after assumed unknown load would breach the ceiling
+    (or, legacy: headroom below min when already on battery).
     """
-    m = max(0.0, min(1.0, marginal_battery_per_kw))
-    if m >= 0.99 and discharge_headroom_kw < min_headroom_for_unknown_kw:
-        return None
+    use_projected = (
+        solar_production_kw is not None
+        and house_consumption_kw is not None
+        and battery_discharge_kw is not None
+        and max_battery_discharge_kw is not None
+    )
+    if use_projected:
+        # pending_extra: learned targets not yet on; assumed kw for the unlearned probe.
+        extra = max(0.0, float(pending_extra_kw)) + max(
+            0.0, float(min_headroom_for_unknown_kw)
+        )
+        if not fits_discharge_ceiling_after_extra(
+            solar_production_kw=float(solar_production_kw),
+            house_consumption_kw=float(house_consumption_kw),
+            battery_discharge_kw=float(battery_discharge_kw),
+            max_battery_discharge_kw=float(max_battery_discharge_kw),
+            extra_load_kw=extra,
+        ):
+            return None
+    else:
+        m = max(0.0, min(1.0, marginal_battery_per_kw))
+        if m >= 0.99 and discharge_headroom_kw < min_headroom_for_unknown_kw:
+            return None
     for eid in consumers_ordered:
         if eid in learned_kw:
             continue
         if eid in on_targets:
+            continue
+        if use_projected and eid in set(currently_on or ()):
             continue
         return eid
     return None
@@ -273,18 +403,40 @@ def trim_learned_consumers_for_very_low_horizon(
     pv_kw_slots: list[float],
     time_iso_slots: list[str],
     hours_until_first_pv: float,
+    solar_production_kw: float | None = None,
+    house_consumption_kw: float | None = None,
+    currently_on: set[str] | frozenset[str] | None = None,
 ) -> set[str]:
     """
     Drop lowest-priority selected consumers until PV+baseline+extra projection does not
     cross very_low within the hourly forecast horizon (or until a simple kWh fallback passes).
+
+    When solar/house are provided, battery-served extra load uses projected overflow
+    (house+new consumers − PV), not only the current marginal snapshot.
     """
     m = max(0.0, min(1.0, marginal_battery_per_kw))
-    if m < _BATTERY_LOAD_MARGIN:
-        return set(selected)
+    use_projected = solar_production_kw is not None and house_consumption_kw is not None
+    on = set(currently_on or ())
 
     ordered_sel = [eid for eid in consumers_ordered if eid in selected]
     if not ordered_sel:
         return set()
+
+    def _battery_extra_kw(eids: list[str]) -> float:
+        if use_projected:
+            extra_new = sum(
+                float(learned_kw.get(eid, 0.0)) for eid in eids if eid not in on
+            )
+            return battery_load_delta_kw(
+                float(solar_production_kw),
+                float(house_consumption_kw),
+                extra_new,
+            )
+        return sum(learned_kw.get(eid, 0.0) for eid in eids) * m
+
+    # No battery impact projected and current marginal says PV covers house → keep set.
+    if _battery_extra_kw(ordered_sel) < _BATTERY_LOAD_MARGIN and m < _BATTERY_LOAD_MARGIN:
+        return set(selected)
 
     forecast_ok = (
         len(pv_kw_slots) >= 1
@@ -293,7 +445,9 @@ def trim_learned_consumers_for_very_low_horizon(
     )
 
     while ordered_sel:
-        total_kw = sum(learned_kw.get(eid, 0.0) for eid in ordered_sel) * m
+        total_kw = _battery_extra_kw(ordered_sel)
+        if total_kw < _BATTERY_LOAD_MARGIN:
+            break
         safe = False
         if forecast_ok:
             _, to_vl = compute_battery_edge_horizons(

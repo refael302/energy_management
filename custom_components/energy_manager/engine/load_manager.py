@@ -41,6 +41,7 @@ from ..const import (
 )
 from ..decision_context import DecisionContext
 from ..integration_log import async_log_event
+from .consumer_budget import fits_discharge_ceiling_after_extra
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,6 +103,12 @@ class WastingContext:
     learned_target: set[str]
     discharge_headroom_kw: float
     marginal_battery_per_kw: float
+    # Snapshot for projected discharge gating (unlearned turn-on path).
+    solar_production_kw: float = 0.0
+    house_consumption_kw: float = 0.0
+    battery_discharge_kw: float = 0.0
+    max_battery_discharge_kw: float = 0.0
+    currently_on: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -561,9 +568,25 @@ class LoadManager:
             if entity_id in ctx.learned_target:
                 return "wasting_target"
             return None
-        m = max(0.0, min(1.0, ctx.marginal_battery_per_kw))
-        if m >= 0.99 and ctx.discharge_headroom_kw < CONSUMER_UNLEARNED_ASSUMED_KW:
-            return None
+        # Unlearned: project assumed load on top of learned targets not yet on.
+        if ctx.max_battery_discharge_kw > 0:
+            pending = sum(
+                float(learned_kw[e])
+                for e in ctx.learned_target
+                if e not in ctx.currently_on and e in learned_kw
+            )
+            if not fits_discharge_ceiling_after_extra(
+                solar_production_kw=ctx.solar_production_kw,
+                house_consumption_kw=ctx.house_consumption_kw,
+                battery_discharge_kw=ctx.battery_discharge_kw,
+                max_battery_discharge_kw=ctx.max_battery_discharge_kw,
+                extra_load_kw=pending + CONSUMER_UNLEARNED_ASSUMED_KW,
+            ):
+                return None
+        else:
+            m = max(0.0, min(1.0, ctx.marginal_battery_per_kw))
+            if m >= 0.99 and ctx.discharge_headroom_kw < CONSUMER_UNLEARNED_ASSUMED_KW:
+                return None
         return "wasting_learn_path"
 
     async def _apply_wasting_budget(

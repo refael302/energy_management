@@ -765,12 +765,25 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 learned_map = self.consumer_learner.get_learned_kw()
                 # Auto-control off → exclude from target, turn-ons, and wasting turn-offs.
                 consumer_list = cycle_active_consumer_ids
+                currently_on = {
+                    eid
+                    for eid in consumer_list
+                    if (st := self.hass.states.get(eid)) is not None and st.state == "on"
+                }
+                solar_kw = float(self.model.solar_production_kw)
+                house_kw = float(self.model.house_consumption_kw)
+                max_dis_kw = float(self.model.max_battery_discharge_kw)
                 learned_target = select_learned_consumers(
                     consumer_list,
                     learned_map,
                     effective_budget_kw,
                     budget_ceilings.discharge_kw,
                     marginal,
+                    solar_production_kw=solar_kw,
+                    house_consumption_kw=house_kw,
+                    battery_discharge_kw=discharge_kw,
+                    max_battery_discharge_kw=max_dis_kw,
+                    currently_on=currently_on,
                 )
                 pv_guard: list[float] = []
                 time_guard: list[str] = []
@@ -796,11 +809,14 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     very_low_percent=float(BATTERY_SOC_VERY_LOW_PERCENT),
                     target_full_percent=float(EOD_BATTERY_TARGET_PLANNING_PERCENT),
                     max_charge_kw=float(self.model.max_battery_charge_kw),
-                    max_discharge_kw=float(self.model.max_battery_discharge_kw),
+                    max_discharge_kw=max_dis_kw,
                     baseline_hourly_kw=list(self.model.baseline_hourly_kw),
                     pv_kw_slots=pv_guard,
                     time_iso_slots=time_guard,
                     hours_until_first_pv=float(self.model.hours_until_first_pv),
+                    solar_production_kw=solar_kw,
+                    house_consumption_kw=house_kw,
+                    currently_on=currently_on,
                 )
                 wasting_context = WastingContext(
                     consumers_ordered=consumer_list,
@@ -808,6 +824,11 @@ class EnergyManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     learned_target=learned_target,
                     discharge_headroom_kw=budget_ceilings.discharge_kw,
                     marginal_battery_per_kw=marginal,
+                    solar_production_kw=solar_kw,
+                    house_consumption_kw=house_kw,
+                    battery_discharge_kw=discharge_kw,
+                    max_battery_discharge_kw=max_dis_kw,
+                    currently_on=frozenset(currently_on),
                 )
 
             m_dis_ceiling = max(
